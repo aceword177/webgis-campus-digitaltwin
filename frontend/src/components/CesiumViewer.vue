@@ -16,18 +16,17 @@ import {
   loadDrones as loadDroneEntities, createDroneEntity, getDroneColor,
   loadNoFlyZones as loadNoFlyZoneEntities,
   loadRoute, loadRestaurantMarkers, parseRouteGeojson,
-  createDroneAnimation, getTableNameByType, computeDistance, formatDistance, formatArea,
+  createDroneAnimation, getTableNameByType,
   flyToTarget
 } from '@/utils/cesium'
+import { createMeasureController } from '@/utils/measure'
 
 const mapStore = useMapStore()
 const cesiumContainer = ref(null)
 const routePlanMode = computed(() => mapStore.routePlanMode)
 
 let handler = null
-let measureHandler = null
-let measurePositions = []
-let measureEntities = []
+let measureController = null
 let droneAnimation = null
 let droneSyncTimer = null
 let currentAnimatedDroneId = null
@@ -66,11 +65,8 @@ onMounted(async () => {
   // 注册自定义事件监听
   registerCustomEventListeners(viewer)
 
-  // 监听测量模式变化
-  watch(() => mapStore.measureMode, (mode) => {
-    if (mode) startMeasure(viewer, mode)
-    else stopMeasure()
-  })
+  // 测量接线（内部注册 measureMode watch）
+  setupMeasure(viewer)
 
   // 监听航线规划模式变化
   watch(routePlanMode, (mode) => {
@@ -594,115 +590,32 @@ function updatePlanHint(viewer, mode) {
   }
 }
 
-/** 开始测量 */
-function startMeasure(viewer, mode) {
-  stopMeasure()
-  measurePositions = []
-  measureHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-
-  measureHandler.setInputAction((movement) => {
-    const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
-    if (!cartesian) return
-    measurePositions.push(cartesian)
-
-    const pointEntity = viewer.entities.add({
-      position: cartesian,
-      point: { pixelSize: 8, color: Cesium.Color.RED, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 }
-    })
-    measureEntities.push(pointEntity)
-
-    if (mode === 'distance' && measurePositions.length >= 2) {
-      const lineEntity = viewer.entities.add({
-        polyline: {
-          positions: [measurePositions[measurePositions.length - 2], cartesian],
-          width: 3,
-          material: Cesium.Color.YELLOW
-        }
+/** 测量接线：mode 变化时启停控制器，回调写入 store 状态 */
+function setupMeasure(viewer) {
+  watch(() => mapStore.measureMode, (mode) => {
+    if (mode) {
+      measureController = createMeasureController(viewer, mode)
+      mapStore.measureController = measureController
+      measureController.onUpdate((snap) => {
+        mapStore.measureSnapshot = { ...snap, done: false }
       })
-      measureEntities.push(lineEntity)
-
-      const dist = computeDistance(measurePositions[measurePositions.length - 2], cartesian)
-      const midPoint = Cesium.Cartesian3.midpoint(measurePositions[measurePositions.length - 2], cartesian, new Cesium.Cartesian3())
-      const labelEntity = viewer.entities.add({
-        position: midPoint,
-        label: {
-          text: formatDistance(dist),
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -10)
-        }
+      measureController.onEnd((snap) => {
+        mapStore.measureSnapshot = { ...snap, done: true }
+        mapStore.setMeasureMode(null) // 结束即退出测量态，实体保留
       })
-      measureEntities.push(labelEntity)
+      measureController.onCancel(() => {
+        mapStore.measureSnapshot = null
+        mapStore.setMeasureMode(null)
+      })
+      measureController.start()
+    } else {
+      measureController?.stop()
     }
-
-    if (mode === 'area' && measurePositions.length >= 3) {
-      const oldPolygon = measureEntities.find(e => e.polygon)
-      if (oldPolygon) {
-        viewer.entities.remove(oldPolygon)
-        measureEntities = measureEntities.filter(e => e !== oldPolygon)
-      }
-      const polygonEntity = viewer.entities.add({
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(measurePositions),
-          material: Cesium.Color.YELLOW.withAlpha(0.3),
-          outline: true,
-          outlineColor: Cesium.Color.YELLOW
-        }
-      })
-      measureEntities.push(polygonEntity)
-    }
-  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-
-  measureHandler.setInputAction(() => {
-    if (mode === 'area' && measurePositions.length >= 3) {
-      const area = computePolygonArea(measurePositions)
-      const center = Cesium.BoundingSphere.fromPoints(measurePositions).center
-      const labelEntity = viewer.entities.add({
-        position: center,
-        label: {
-          text: '面积: ' + formatArea(area),
-          font: '16px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE
-        }
-      })
-      measureEntities.push(labelEntity)
-    }
-    mapStore.setMeasureMode(null)
-  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+  })
 }
 
 function stopMeasure() {
-  if (measureHandler) {
-    measureHandler.destroy()
-    measureHandler = null
-  }
-  const viewer = mapStore.viewer
-  if (viewer) measureEntities.forEach(e => viewer.entities.remove(e))
-  measureEntities = []
-  measurePositions = []
-}
-
-function computePolygonArea(positions) {
-  let area = 0
-  const n = positions.length
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const p1 = Cesium.Cartographic.fromCartesian(positions[i])
-    const p2 = Cesium.Cartographic.fromCartesian(positions[j])
-    area += Cesium.Math.toDegrees(p1.longitude) * Cesium.Math.toDegrees(p2.latitude)
-    area -= Cesium.Math.toDegrees(p2.longitude) * Cesium.Math.toDegrees(p1.latitude)
-  }
-  area = Math.abs(area) / 2
-  const centerLat = Cesium.Math.toDegrees(Cesium.Cartographic.fromCartesian(positions[0]).latitude)
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos(Cesium.Math.toRadians(centerLat))
-  return area * metersPerDegLat * metersPerDegLng
+  measureController?.stop()
 }
 
 defineExpose({ stopMeasure })
