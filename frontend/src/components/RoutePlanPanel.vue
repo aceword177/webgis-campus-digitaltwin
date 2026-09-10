@@ -84,10 +84,10 @@
             <span class="result-label">预计时长</span>
           </div>
           <div class="result-item">
-            <span class="result-value" :class="{ warning: planResult.avoided_no_fly_zone }">
-              {{ planResult.avoided_no_fly_zone ? '是' : '否' }}
+            <span class="result-value" :class="avoidanceClass">
+              {{ avoidanceText }}
             </span>
-            <span class="result-label">避让限飞区</span>
+            <span class="result-label">限飞区</span>
           </div>
           <div class="result-item">
             <span class="result-value">{{ planResult.waypoints_count }}</span>
@@ -241,6 +241,26 @@ function formatDuration(seconds) {
   return fmtDur(seconds)
 }
 
+/** 限飞区避让结果三态文案（真实穿越检测） */
+const avoidanceText = computed(() => {
+  const r = planResult.value
+  if (!r) return '-'
+  if (r.route_still_cross_zone) return '路径仍穿越'
+  if (r.straight_line_cross_zone) {
+    const n = (r.crossed_zones && r.crossed_zones.length) || 0
+    return `已绕行 ${n} 个`
+  }
+  return '未穿越'
+})
+
+const avoidanceClass = computed(() => {
+  const r = planResult.value
+  if (!r) return ''
+  if (r.route_still_cross_zone) return 'danger'
+  if (r.straight_line_cross_zone) return 'success'
+  return ''
+})
+
 function close() {
   mapStore.closePanel()
   mapStore.cancelRoutePlanning()
@@ -347,6 +367,8 @@ watch(routePlanMode, (val) => {
 }
 
 .result-value.warning { color: #E6A23C; }
+.result-value.success { color: #67C23A; }
+.result-value.danger { color: #F56C6C; }
 .result-label { font-size: 10px; color: rgba(255,255,255,0.5); }
 
 .tip {
