@@ -49,8 +49,10 @@ function undoMeasure() {
 }
 
 function clearMeasure() {
-  // 置空测量模式会触发 CesiumViewer 的 watch -> stopMeasure()，只清理测量实体
+  // 清空全部测量实体并隐藏信息条，再退出测量态
   // 不能直接 viewer.entities.removeAll()，否则会误删无人机动画等业务实体
+  mapStore.measureController?.clear()
+  mapStore.measureSnapshot = null
   mapStore.setMeasureMode(null)
 }
 
