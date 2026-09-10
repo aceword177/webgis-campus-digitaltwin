@@ -107,6 +107,11 @@
           <span class="layer-color" style="background: #4A90D9"></span>
           <span class="layer-name">宿舍楼标记</span>
         </div>
+        <div class="layer-item">
+          <el-switch v-model="layers.canteenBuffer" @change="(v) => setLayerVisible('canteenBuffer', v)" />
+          <span class="layer-color" style="background: linear-gradient(90deg,#2ECC40,#FF851B,#FF4136)"></span>
+          <span class="layer-name">食堂缓冲区</span>
+        </div>
       </el-collapse-item>
     </el-collapse>
   </div>
