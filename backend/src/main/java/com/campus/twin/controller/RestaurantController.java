@@ -1,6 +1,7 @@
 package com.campus.twin.controller;
 
 import com.campus.twin.common.Result;
+import com.campus.twin.dto.CanteenCoverageVO;
 import com.campus.twin.dto.RestaurantDetailVO;
 import com.campus.twin.entity.Product;
 import com.campus.twin.entity.Restaurant;
@@ -26,6 +27,12 @@ public class RestaurantController {
     @GetMapping("/list")
     public Result<List<Restaurant>> list() {
         return Result.success(restaurantService.list());
+    }
+
+    @Operation(summary = "食堂缓冲区覆盖（按导航路径时间 30/60/90s 分档）")
+    @GetMapping("/coverage")
+    public Result<List<CanteenCoverageVO>> coverage() {
+        return Result.success(restaurantService.getCoverage());
     }
 
     @Operation(summary = "餐厅详情（含建筑坐标）")
