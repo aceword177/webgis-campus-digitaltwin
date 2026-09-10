@@ -139,17 +139,42 @@ export async function loadRoads(viewer, features, name) {
 
 /**
  * 加载校园边界（描边，无填充）
+ *
+ * 实现说明：不能依赖 GeoJsonDataSource 的 stroke 选项——clampToGround=true 时
+ * 多边形以 GroundPrimitive 渲染，outline（描边）不生效，且 fill 为透明时整层不可见。
+ * 因此手动提取每个多边形外环，改用贴地 polyline（GroundPolylinePrimitive）描边。
  */
 export async function loadSchoolBoundary(viewer, features, name) {
+  const dataSource = new Cesium.CustomDataSource(name)
   const geoJson = toGeoJsonFeatureCollection(features)
-  const dataSource = await Cesium.GeoJsonDataSource.load(geoJson, {
-    stroke: Cesium.Color.YELLOW,
-    strokeWidth: 3,
-    fill: Cesium.Color.TRANSPARENT,
-    clampToGround: true
-  })
 
-  dataSource.name = name
+  for (const feature of geoJson.features || []) {
+    const geom = feature?.geometry
+    if (!geom) continue
+
+    // 提取外环坐标（支持 Polygon / MultiPolygon）
+    const rings = []
+    if (geom.type === 'Polygon') {
+      if (geom.coordinates?.[0]) rings.push(geom.coordinates[0])
+    } else if (geom.type === 'MultiPolygon') {
+      for (const poly of geom.coordinates || []) {
+        if (poly?.[0]) rings.push(poly[0])
+      }
+    }
+
+    for (const ring of rings) {
+      if (!ring || ring.length < 3) continue
+      dataSource.entities.add({
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray(ring.flat()),
+          width: 3,
+          material: Cesium.Color.YELLOW,
+          clampToGround: true
+        }
+      })
+    }
+  }
+
   viewer.dataSources.add(dataSource)
   return dataSource
 }

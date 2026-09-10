@@ -114,6 +114,18 @@ export const useMapStore = defineStore('map', () => {
 
   function setLayerVisible(layerName, visible) {
     layers[layerName] = visible
+
+    // 底图影像不是 dataSource，而是 imagery layer，需单独控制
+    if (layerName === 'baseImagery') {
+      const imageryLayers = viewer.value?.imageryLayers
+      if (imageryLayers && imageryLayers.length) {
+        for (let i = 0; i < imageryLayers.length; i++) {
+          imageryLayers.get(i).show = visible
+        }
+      }
+      return
+    }
+
     const ds = dataSources[layerName]
     if (ds) ds.show = visible
   }
