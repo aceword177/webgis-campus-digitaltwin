@@ -2,13 +2,13 @@ import * as Cesium from 'cesium'
 import { computeDistance, formatDistance, formatArea } from './cesium'
 
 /**
- * 测量控制器：状态机 idle → placing → done
- * 交互：左键加点 / 右键撤销 / 双击结束 / Esc 取消
+ * 测量控制器：状态机 idle → placing → pending → done
+ * 交互：左键加点 / 右键撤销 / 双击自检结束 / Esc 取消（pending 时 Esc=继续）
  * 语义：stop() 停事件保留结果实体；clear() 全清（结果+预览）
  */
 export function createMeasureController(viewer, mode) {
   let handler = null
-  let phase = 'idle' // idle | placing | done
+  let phase = 'idle' // idle | placing | pending | done
   let positions = [] // Cartesian3[]
   let entities = []  // 正式实体（节点/线/面/标签）
   let previewPoint = null
@@ -18,7 +18,11 @@ export function createMeasureController(viewer, mode) {
   let onUpdateCb = null
   let onEndCb = null
   let onCancelCb = null
+  let onPendingCb = null
   let escListener = null
+  // 双击自检状态
+  let lastClickAt = null
+  let lastClickPos = null
 
   const MIN_POINTS = mode === 'distance' ? 2 : 3
 
@@ -187,24 +191,75 @@ export function createMeasureController(viewer, mode) {
     emitUpdate()
   }
 
-  /** 双击结束：先去重（双击派发两次单击，移除冗余点），再判定/定格 */
-  function end() {
-    if (positions.length >= 2) {
-      const last = positions[positions.length - 1]
-      const prev = positions[positions.length - 2]
-      if (computeDistance(last, prev) < 5) positions.pop()
+  /** 绑定测量事件（左键双击自检 / 鼠标移动预览 / 右键撤销 / Esc） */
+  function bindEvents() {
+    handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+    // 左键：双击自检（间隔<400ms 且位移<8px 判定双击→结束，不加点）
+    handler.setInputAction((movement) => {
+      const now = performance.now()
+      if (lastClickAt && (now - lastClickAt) < 400 &&
+          Cesium.Cartesian2.distance(lastClickPos, movement.position) < 8) {
+        lastClickAt = null
+        end()
+        return
+      }
+      lastClickAt = now
+      lastClickPos = movement.position.clone()
+      const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
+      if (cartesian) addPoint(cartesian)
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+    handler.setInputAction((movement) => {
+      const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
+      renderPreview(cartesian)
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+    handler.setInputAction(() => undo(), Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+    escListener = (e) => {
+      if (e.key === 'Escape') {
+        if (phase === 'pending') { resume(); return }
+        clear()
+        if (onCancelCb) onCancelCb()
+      }
     }
-    if (positions.length < MIN_POINTS) { clear(); return }
+    window.addEventListener('keydown', escListener)
+  }
+
+  /** 停止事件监听（destroy handler + 移除 Esc），不触碰实体 */
+  function stopEvents() {
+    if (handler) { handler.destroy(); handler = null }
+    if (escListener) { window.removeEventListener('keydown', escListener); escListener = null }
+  }
+
+  /** 双击结束：无条件移除双击第一击冗余点 → 点数不足则取消，否则进入 pending 待确认 */
+  function end() {
+    if (positions.length >= 1) positions.pop()
+    if (positions.length < MIN_POINTS) {
+      clear()
+      if (onCancelCb) onCancelCb()
+      return
+    }
+    stopEvents()
     clearPreview()
     renderFormal()
+    phase = 'pending'
+    if (onPendingCb) onPendingCb(getSnapshot())
+  }
+
+  /** 确认结束：phase→done，触发 onEnd（接线方会置空 measureMode） */
+  function confirmEnd() {
     phase = 'done'
     if (onEndCb) onEndCb(getSnapshot())
   }
 
+  /** 从 pending 继续加点：重新绑定事件，回到 placing */
+  function resume() {
+    phase = 'placing'
+    bindEvents()
+    emitUpdate()
+  }
+
   /** 停止测量：停事件、清预览、回 idle；保留正式结果实体（供查看） */
   function stop() {
-    if (handler) { handler.destroy(); handler = null }
-    if (escListener) { window.removeEventListener('keydown', escListener); escListener = null }
+    stopEvents()
     clearPreview()
     positions = []
     phase = 'idle'
@@ -219,21 +274,7 @@ export function createMeasureController(viewer, mode) {
   function start() {
     clear()
     phase = 'placing'
-    handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-    handler.setInputAction((movement) => {
-      const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
-      if (cartesian) addPoint(cartesian)
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-    handler.setInputAction((movement) => {
-      const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
-      renderPreview(cartesian)
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
-    handler.setInputAction(() => undo(), Cesium.ScreenSpaceEventType.RIGHT_CLICK)
-    handler.setInputAction(() => end(), Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
-    escListener = (e) => {
-      if (e.key === 'Escape') { clear(); if (onCancelCb) onCancelCb() }
-    }
-    window.addEventListener('keydown', escListener)
+    bindEvents()
   }
 
   return {
@@ -241,9 +282,12 @@ export function createMeasureController(viewer, mode) {
     stop,
     clear,
     undo,
+    confirmEnd,
+    resume,
     getSnapshot,
     onUpdate(cb) { onUpdateCb = cb },
     onEnd(cb) { onEndCb = cb },
-    onCancel(cb) { onCancelCb = cb }
+    onCancel(cb) { onCancelCb = cb },
+    onPending(cb) { onPendingCb = cb }
   }
 }

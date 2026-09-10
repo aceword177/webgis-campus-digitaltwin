@@ -594,14 +594,18 @@ function updatePlanHint(viewer, mode) {
 function setupMeasure(viewer) {
   watch(() => mapStore.measureMode, (mode) => {
     if (mode) {
+      measureController?.clear() // 清上一轮残留实体，避免新旧叠加
       measureController = createMeasureController(viewer, mode)
       mapStore.measureController = measureController
       measureController.onUpdate((snap) => {
-        mapStore.measureSnapshot = { ...snap, done: false }
+        mapStore.measureSnapshot = { ...snap, phase: 'placing' }
+      })
+      measureController.onPending((snap) => {
+        mapStore.measureSnapshot = { ...snap, phase: 'pending' }
       })
       measureController.onEnd((snap) => {
-        mapStore.measureSnapshot = { ...snap, done: true }
-        mapStore.setMeasureMode(null) // 结束即退出测量态，实体保留
+        mapStore.measureSnapshot = { ...snap, phase: 'done' }
+        mapStore.setMeasureMode(null) // 确认结束即退出测量态，实体保留
       })
       measureController.onCancel(() => {
         mapStore.measureSnapshot = null

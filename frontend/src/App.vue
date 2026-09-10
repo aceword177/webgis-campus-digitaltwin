@@ -50,6 +50,7 @@
         <!-- 测量信息条（实时汇总） -->
         <div class="measure-info-slot">
           <MeasureInfo />
+          <MeasureConfirm />
         </div>
 
         <!-- 底部工具栏 -->
@@ -89,6 +90,7 @@ import DeliveryStats from '@/components/DeliveryStats.vue'
 import BuildingPopup from '@/components/BuildingPopup.vue'
 import MeasureTool from '@/components/MeasureTool.vue'
 import MeasureInfo from '@/components/MeasureInfo.vue'
+import MeasureConfirm from '@/components/MeasureConfirm.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)
