@@ -10,14 +10,14 @@ import { getGeoJson, getCampusBounds, pointQuery } from '@/api/spatial'
 import { getDrones, updateDronePosition } from '@/api/drone'
 import { getNoFlyZones } from '@/api/noFlyZone'
 import { getActiveRoutes, getRouteByOrderId } from '@/api/route'
-import { getRestaurants, getRestaurantDetail } from '@/api/restaurant'
+import { getRestaurants, getRestaurantDetail, getRestaurantCoverage } from '@/api/restaurant'
 import {
   loadBuildings, loadVenues, loadRoads, loadSchoolBoundary,
   loadDrones as loadDroneEntities, createDroneEntity, getDroneColor,
   loadNoFlyZones as loadNoFlyZoneEntities,
   loadRoute, loadRestaurantMarkers, parseRouteGeojson,
   createDroneAnimation, getTableNameByType,
-  flyToTarget
+  flyToTarget, loadCanteenBuffer, createDormitoryHighlight
 } from '@/utils/cesium'
 import { createMeasureController } from '@/utils/measure'
 
@@ -27,6 +27,13 @@ const routePlanMode = computed(() => mapStore.routePlanMode)
 
 let handler = null
 let measureController = null
+let dormHighlight = null // 宿舍覆盖高亮 dataSource
+function clearDormHighlight(viewer) {
+  if (dormHighlight) {
+    viewer.dataSources.remove(dormHighlight)
+    dormHighlight = null
+  }
+}
 let droneAnimation = null
 let droneSyncTimer = null
 let currentAnimatedDroneId = null
@@ -67,6 +74,14 @@ onMounted(async () => {
 
   // 测量接线（内部注册 measureMode watch）
   setupMeasure(viewer)
+
+  // 覆盖浮窗联动：tier 视图高亮宿舍，关闭清除
+  watch(() => mapStore.coveragePopup, (v) => {
+    clearDormHighlight(viewer)
+    if (v?.type === 'tier' && v.dormitories?.length) {
+      dormHighlight = createDormitoryHighlight(viewer, v.dormitories)
+    }
+  })
 
   // 移除 Cesium 默认双击缩放（双击左键=拉远视角），避免测量双击时视角跳变
   viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
@@ -176,6 +191,15 @@ async function loadDeliveryData(viewer) {
       }
     }
   } catch (e) { console.warn('加载餐厅标记失败:', e) }
+
+  // 加载食堂缓冲区覆盖
+  try {
+    const coverage = await getRestaurantCoverage()
+    if (coverage?.length) {
+      mapStore.canteenCoverage = coverage
+      mapStore.dataSources.canteenBuffer = loadCanteenBuffer(viewer, coverage, '食堂缓冲区')
+    }
+  } catch (e) { console.warn('加载食堂缓冲区失败:', e) }
 }
 
 /** 启动无人机位置定时同步（每 2 秒一次，与后端实时推进节奏一致） */
@@ -352,6 +376,39 @@ function registerClickHandler(viewer) {
         return
       }
 
+      // 食堂缓冲圈：该档覆盖宿舍 + 高亮（高亮由 coveragePopup watch 统一处理）
+      if (entity.properties?.isCanteenTier?.getValue()) {
+        const canteenId = entity.properties.canteenId?.getValue()
+        const seconds = entity.properties.seconds?.getValue()
+        const canteen = (mapStore.canteenCoverage || []).find(c => c.canteen_id === canteenId)
+        const tier = canteen?.tiers?.find(t => t.seconds === seconds)
+        if (tier) {
+          mapStore.coveragePopup = {
+            type: 'tier',
+            canteenId,
+            canteenName: canteen.name,
+            seconds,
+            dormitories: tier.dormitories
+          }
+        }
+        return
+      }
+
+      // 食堂标记：3 档覆盖概览
+      if (entity.properties?.isRestaurant?.getValue()) {
+        const canteen = (mapStore.canteenCoverage || []).find(
+          c => c.canteen_id === entity.properties.id?.getValue()
+        )
+        if (canteen) {
+          mapStore.coveragePopup = {
+            type: 'overview',
+            canteenId: canteen.canteen_id,
+            canteenName: canteen.name
+          }
+        }
+        return
+      }
+
       // 建筑点击
       const buildingType = entity._buildingType
       if (buildingType) {
@@ -381,6 +438,7 @@ function registerClickHandler(viewer) {
 
     // 点击空白处，清除选中
     mapStore.clearSelection()
+    mapStore.coveragePopup = null
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
 
