@@ -108,3 +108,21 @@
 - utils/cesium.js 已有 `computeDistance`（EllipsoidGeodesic）、`formatDistance`（m/km）、`formatArea`（m²/公顷）可复用；
 - MeasureTool.vue 现有按钮结构与 `clearMeasure` 语义（置空 measureMode，注释明确不得 removeAll）；
 - App.vue `.map-container` 为 position:relative 容器，底部可叠加悬浮元素；`MeasureTool` 位于 `.bottom-toolbar`（bottom:20px 居中）。
+
+## 8. 缺陷修复 + 结束确认弹窗（2026-09-10 第二轮，用户已确认）
+
+### 8.1 缺陷根因（已核实）
+
+1. **残留实体导致"点数2/面积0/图上点多"**：`CesiumViewer.setupMeasure` 的 watch 在每次进入测量模式时新建 `measureController`（`measureController = createMeasureController(...)`），新实例 `start()→clear()` 只清自身实体；上一轮 controller `stop()` 按设计**保留**结果实体，重新开始测量时旧多边形残留叠加新点。
+2. **双击无法结束**：Cesium 的 `LEFT_DOUBLE_CLICK` 依赖浏览器原生 dblclick（受系统双击间隔/位移阈值限制），用户双击间隔稍长或位移稍大即不触发，被当成两次单击各加 1 点；即便触发，去重用地面距离 5m 阈值，高视角下双击两击屏幕 4px 内地面距离可能 >5m，去重失效致结束点多 1~2 个。
+
+### 8.2 修复与弹窗设计（用户已确认）
+
+1. **watch 进入测量前清残留**：`if (mode) { measureController?.clear(); measureController = createMeasureController(viewer, mode); ... }`。
+2. **双击自检**：移除 `LEFT_DOUBLE_CLICK` 注册；在 `LEFT_CLICK` 回调内自检——两次点击 `performance.now()` 间隔 <400ms 且 `Cartesian2.distance` <8px 判定为双击 → 不加点直接 `end()`；否则记录 `lastClickAt/lastClickPos` 并 `addPoint`。
+3. **end() 改为进入 pending**：无条件移除最后 1 点（双击第一击产生的冗余点）→ 点数不足 MIN_POINTS 时 `clear()` 并触发 `onCancel`（同步 UI）→ 否则停事件（保留实体）、`phase='pending'`、回调 `onPending(snapshot)`。
+4. **controller API 扩展**：`confirmEnd()`（phase='done' + `onEnd`）；`resume()`（phase='placing' + 重新绑定事件 + `emitUpdate`）；`start()` 抽 `bindEvents()`、`stop()` 抽 `stopEvents()` 复用；Esc：placing 时 `clear()+onCancel`，pending 时 `resume()`。
+5. **snapshot 增加 phase 字段**：`placing`（onUpdate）/ `pending`（onPending）/ `done`（onEnd），由 CesiumViewer 包装时写入。
+6. **MeasureConfirm.vue（新）**：`v-if="measureSnapshot?.phase === 'pending'"`；内容"测距完成 · 总长 xxx m" / "测面积完成 · 面积 xxx · 周长 xxx"；按钮【继续加点】→ `measureController.resume()`，【完成】→ `measureController.confirmEnd()`；位置在信息条上方，深色半透明风格。App.vue 挂载。
+7. **MeasureInfo.vue**：phase 文案——`pending` 显示"· 待确认"，`done` 显示"· 已定格"。
+8. **CesiumViewer 接线**：`onUpdate → {...snap, phase:'placing'}`；新增 `onPending → {...snap, phase:'pending'}`；`onEnd → {...snap, phase:'done'} + setMeasureMode(null)`；`onCancel → measureSnapshot=null + setMeasureMode(null)`。
