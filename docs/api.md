@@ -19,11 +19,11 @@
   "message": "success",
   "data": [
     {
-      "tableName": "teaching_building",
+      "table_name": "teaching_building",
       "label": "教学楼",
-      "geometryType": "polygon",
+      "geometry_type": "polygon",
       "count": 7,
-      "hasHeight": true
+      "has_height": true
     }
   ]
 }
@@ -116,71 +116,321 @@
 
 ---
 
-## 三、模拟物联网接口
+## 三、统计接口
 
-> MVP 阶段全部为内存模拟数据，设备点位基于校园边界随机生成
-
-### 3.1 获取设备列表
-
-- **URL**: `GET /api/iot/devices`
-- **参数**: `type`（可选）- 设备类型：camera / streetlight / smoke / energy
-- **响应示例**:
-```json
-{
-  "data": [
-    {
-      "id": "camera-001",
-      "name": "摄像头-1号",
-      "type": "camera",
-      "typeLabel": "摄像头",
-      "lng": 114.465,
-      "lat": 38.04,
-      "online": true,
-      "location": "教学楼A座入口"
-    }
-  ]
-}
-```
-
-### 3.2 获取设备实时数据
-
-- **URL**: `GET /api/iot/device/{id}/realtime`
-- **响应**: 温度、湿度、能耗、烟雾浓度等模拟数据
-
-### 3.3 获取告警列表
-
-- **URL**: `GET /api/iot/alerts`
-- **说明**: 随机生成 1-3 条告警（火警/离线/异常/故障）
-
-### 3.4 获取设备统计
-
-- **URL**: `GET /api/iot/stats`
-- **响应**: 总数、在线数、离线数、告警数、按类型分组
-
----
-
-## 四、统计接口
-
-### 4.1 校园概览统计
+### 3.1 校园概览统计
 
 - **URL**: `GET /api/stat/overview`
 - **响应示例**:
 ```json
 {
   "data": {
-    "buildingCount": 28,
-    "buildingArea": 45000.5,
-    "avgFloors": 5.8,
-    "maxFloors": 8,
-    "roadCount": 29,
-    "roadLength": 3200.5,
-    "venueCount": 4,
-    "centerLng": 114.465,
-    "centerLat": 38.04,
-    "campusArea": 520000
+    "building_count": 28,
+    "building_area": 45000.5,
+    "avg_floors": 5.8,
+    "max_floors": 8,
+    "road_count": 29,
+    "road_length": 3200.5,
+    "venue_count": 4,
+    "center_lng": 114.465,
+    "center_lat": 38.04,
+    "campus_area": 520000
   }
 }
 ```
+
+---
+
+## 四、配送业务接口
+
+> 无人机外卖配送业务，含订单、无人机、航线、限飞区、餐厅、商品六组接口。
+> 注意：后端全局 `SNAKE_CASE` 序列化，所有请求体与响应字段均为下划线命名。
+
+### 4.1 无人机管理
+
+#### 4.1.1 无人机列表
+
+- **URL**: `GET /api/drone/list`
+- **参数**: `status`（可选）- 状态过滤：idle / delivering / charging / maintenance
+- **响应示例**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "id": 1,
+      "drone_no": "UAV-001",
+      "model": "DJI Matrice 30",
+      "max_payload_kg": 2.0,
+      "max_range_km": 5.0,
+      "battery_pct": 100,
+      "status": "idle",
+      "current_lng": 114.470404,
+      "current_lat": 37.983182,
+      "last_update_time": "2026-09-10T10:00:00",
+      "create_time": "2026-09-08T09:00:00"
+    }
+  ]
+}
+```
+
+#### 4.1.2 无人机详情
+
+- **URL**: `GET /api/drone/{id}`
+- **响应**: 单个无人机对象（字段同上）
+
+#### 4.1.3 无人机状态统计
+
+- **URL**: `GET /api/drone/stats`
+- **响应示例**:
+```json
+{
+  "data": {
+    "total": 10,
+    "idle": 6,
+    "delivering": 2,
+    "charging": 2,
+    "maintenance": 0,
+    "avg_battery": 72.5,
+    "by_status": { "idle": 6, "delivering": 2, "charging": 2 }
+  }
+}
+```
+
+#### 4.1.4 更新无人机位置和电量（模拟实时上报）
+
+- **URL**: `POST /api/drone/{id}/update-position`
+- **参数**: `lng`（必填）、`lat`（必填）、`battery`（可选）
+- **说明**: 模拟无人机实时上报位置/电量，写入数据库
+
+### 4.2 订单管理
+
+订单状态机：`pending(待接单)` → `assigned(已分配)` → `delivering(配送中)` → `delivered(已送达)` / `cancelled(已取消)`。
+
+#### 4.2.1 订单列表
+
+- **URL**: `GET /api/order/list`
+- **参数**: `status`（可选）、`page`（默认1）、`size`（默认20）
+- **响应示例**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "id": 1,
+      "order_no": "DD20260910103000123",
+      "restaurant_id": 1,
+      "restaurant_name": "一食堂",
+      "dormitory_id": 1,
+      "dormitory_name": "1号宿舍楼",
+      "items_text": "黄焖鸡米饭×1、冰可乐×1",
+      "amount": 25.5,
+      "status": "delivering",
+      "drone_id": 3,
+      "create_time": "2026-09-10T10:30:00",
+      "assign_time": "2026-09-10T10:31:00",
+      "deliver_time": null,
+      "remark": null
+    }
+  ]
+}
+```
+
+#### 4.2.2 订单详情（含餐厅/宿舍楼/无人机/航线）
+
+- **URL**: `GET /api/order/{id}`
+- **响应**: 订单字段 + `restaurant_name`、`dormitory_name`、`drone_no`、`status_label`、`route`（航线信息：route_id、route_geojson、distance_m、estimated_seconds、altitude_m、status）
+
+#### 4.2.3 创建订单
+
+- **URL**: `POST /api/order/create`
+- **请求体**:
+```json
+{
+  "restaurant_id": 1,
+  "dormitory_id": 3,
+  "items_text": "麻辣香锅×1、米饭×2",
+  "amount": 32.0,
+  "receiver_name": "张三",
+  "receiver_phone": "13800000000",
+  "remark": "少辣"
+}
+```
+
+#### 4.2.4 分配无人机（自动调度 + 航线规划）
+
+- **URL**: `POST /api/order/{id}/assign`
+- **参数**: `droneId`（可选，不传则自动选择空闲且电量>30%的无人机）
+- **说明**: 分配后自动规划 A* 航线（避限飞区）、订单转 `delivering`、无人机转 `delivering`
+
+#### 4.2.5 确认送达
+
+- **URL**: `POST /api/order/{id}/deliver`
+- **说明**: 校验无人机距收货宿舍楼 ≤ 30 米后才允许送达；送达后自动处理无人机续派/充电
+
+#### 4.2.6 取消订单
+
+- **URL**: `POST /api/order/{id}/cancel`
+- **参数**: `reason`（可选）
+- **说明**: 已送达/已取消订单不可取消；取消时释放配送中的无人机
+
+#### 4.2.7 配送统计
+
+- **URL**: `GET /api/order/stats`
+- **响应示例**:
+```json
+{
+  "data": {
+    "today_orders": 12,
+    "today_delivered": 9,
+    "today_delivering": 2,
+    "today_pending": 1,
+    "delivery_rate": 0.75,
+    "avg_delivery_minutes": 4.5,
+    "order_status_count": { "delivered": 9, "delivering": 2, "pending": 1 },
+    "orders_by_restaurant": { "一食堂": 7, "二食堂": 5 }
+  }
+}
+```
+
+### 4.3 航线规划
+
+#### 4.3.1 规划航线（核心算法：pgr_astar 最短路径 + 限飞区边级避让）
+
+- **URL**: `POST /api/route/plan`
+- **请求体**:
+```json
+{
+  "start_lng": 114.470404,
+  "start_lat": 37.983182,
+  "end_lng": 114.475000,
+  "end_lat": 37.986000,
+  "altitude": 50
+}
+```
+- **响应示例**:
+```json
+{
+  "code": 200,
+  "data": {
+    "route_geojson": "{\"type\":\"LineString\",\"coordinates\":[[...]]}",
+    "waypoints": [[114.470404, 37.983182], [114.472, 37.9845], [114.475, 37.986]],
+    "waypoints_count": 18,
+    "distance_m": 620.4,
+    "estimated_seconds": 124,
+    "altitude_m": 50.0,
+    "start_node_id": 1024,
+    "end_node_id": 3056,
+    "avoided_no_fly_zone": true,
+    "straight_line_cross_zone": true,
+    "route_still_cross_zone": false,
+    "crossed_zones": [
+      { "id": 1, "name": "图书馆禁飞区", "level": "strict" }
+    ]
+  }
+}
+```
+- **字段说明**:
+  | 字段 | 说明 |
+  |------|------|
+  | `avoided_no_fly_zone` | 是否成功避让限飞区（直线穿越且路径不穿越 = true） |
+  | `straight_line_cross_zone` | 起终点直线是否穿越限飞区 |
+  | `route_still_cross_zone` | A* 规划路径是否仍与限飞区相交（true = 避让失败警告） |
+  | `crossed_zones` | 直线穿越的限飞区明细（id/name/level） |
+
+#### 4.3.2 航线详情
+
+- **URL**: `GET /api/route/{id}`
+
+#### 4.3.3 根据订单 ID 查询航线
+
+- **URL**: `GET /api/route/order/{orderId}`
+
+#### 4.3.4 当前飞行中的航线列表
+
+- **URL**: `GET /api/route/active`
+- **说明**: 返回所有 `flying` 状态的航线（含 route_geom GeoJSON），前端用于地图实时渲染
+
+### 4.4 限飞区
+
+#### 4.4.1 限飞区列表（GeoJSON）
+
+- **URL**: `GET /api/no-fly-zone/list`
+- **参数**: `level`（可选）- strict / warning
+- **响应示例**:
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "id": 1,
+      "name": "图书馆禁飞区",
+      "source_table": "other_buildings",
+      "source_id": 5,
+      "geom": "{\"type\":\"MultiPolygon\",\"coordinates\":[...]}",
+      "level": "strict",
+      "reason": "人流密集区域",
+      "create_time": "2026-09-08T10:00:00"
+    }
+  ]
+}
+```
+
+#### 4.4.2 检测线段是否穿越限飞区
+
+- **URL**: `POST /api/no-fly-zone/check`
+- **参数**: `startLng`、`startLat`、`endLng`、`endLat`
+- **响应**: 穿越的限飞区列表（id/name/level）
+
+### 4.5 餐厅
+
+#### 4.5.1 餐厅列表
+
+- **URL**: `GET /api/restaurant/list`
+
+#### 4.5.2 餐厅详情（含建筑坐标）
+
+- **URL**: `GET /api/restaurant/{id}`
+- **响应示例**:
+```json
+{
+  "code": 200,
+  "data": {
+    "id": 1,
+    "building_id": 12,
+    "name": "一食堂",
+    "window_count": 10,
+    "open_time": "07:00-21:00",
+    "rating": 4.5,
+    "phone": "0311-88888888",
+    "center_lng": 114.470404,
+    "center_lat": 37.983182,
+    "building_geojson": "{\"type\":\"Polygon\",\"coordinates\":[...]}"
+  }
+}
+```
+
+#### 4.5.3 餐厅的产品列表
+
+- **URL**: `GET /api/restaurant/{id}/products`
+- **参数**: `category`（可选）- 主食/小吃/饮品/套餐
+
+### 4.6 商品
+
+#### 4.6.1 商品列表
+
+- **URL**: `GET /api/product/list`
+- **参数**: `restaurantId`（可选）、`category`（可选）、`keyword`（可选）
+
+#### 4.6.2 商品详情
+
+- **URL**: `GET /api/product/{id}`
+
+#### 4.6.3 热销商品榜
+
+- **URL**: `GET /api/product/hot`
+- **参数**: `limit`（默认10）
+- **说明**: 按销量降序返回热销商品
 
 ---
 
