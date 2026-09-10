@@ -1,6 +1,6 @@
 <template>
   <div class="measure-tool">
-    <el-radio-group v-model="measureMode" size="small" @change="handleModeChange">
+    <el-radio-group v-model="measureMode" size="small">
       <el-radio-button value="distance">
         <el-icon><Position /></el-icon>
         测距
@@ -14,6 +14,10 @@
       <el-icon><Delete /></el-icon>
       清除
     </el-button>
+    <el-button size="small" @click="undoMeasure" :disabled="!measureMode">
+      <el-icon><RefreshLeft /></el-icon>
+      撤销
+    </el-button>
     <el-button size="small" type="warning" @click="openRoutePlan">
       <el-icon><Guide /></el-icon>
       航线规划
@@ -22,12 +26,15 @@
       <el-icon><Location /></el-icon>
       定位校园
     </el-button>
+    <div v-if="measureMode" class="measure-hint">
+      左键加点 · 右键撤销 · 双击结束 · Esc 取消
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { Position, Grid, Delete, Location, Guide } from '@element-plus/icons-vue'
+import { Position, Grid, Delete, Location, Guide, RefreshLeft } from '@element-plus/icons-vue'
 import { useMapStore } from '@/stores/map'
 
 const mapStore = useMapStore()
@@ -37,10 +44,8 @@ const measureMode = computed({
   set: (val) => mapStore.setMeasureMode(val)
 })
 
-function handleModeChange(val) {
-  if (val === 'distance') {
-    // 提示操作方式
-  }
+function undoMeasure() {
+  mapStore.measureController?.undo()
 }
 
 function clearMeasure() {
@@ -66,6 +71,18 @@ function flyToCampus() {
   padding: 6px 12px;
   background: rgba(20, 30, 48, 0.9);
   border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.measure-hint {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(64, 158, 255, 0.15);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #79bbff;
+  text-align: center;
 }
 
 .measure-tool :deep(.el-radio-button__inner) {
