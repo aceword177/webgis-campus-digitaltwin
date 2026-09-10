@@ -193,11 +193,11 @@ export function createMeasureController(viewer, mode) {
   /** 绑定测量事件（左键双击自检 / 鼠标移动预览 / 右键撤销 / Esc） */
   function bindEvents() {
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-    // 左键：双击自检（间隔<400ms 且位移<8px 判定双击→结束，不加点）
+    // 左键：双击自检（间隔<250ms 且位移<4px 判定双击→结束，不加点）
     handler.setInputAction((movement) => {
       const now = performance.now()
-      if (lastClickAt && (now - lastClickAt) < 400 &&
-          Cesium.Cartesian2.distance(lastClickPos, movement.position) < 8) {
+      if (lastClickAt && (now - lastClickAt) < 250 &&
+          Cesium.Cartesian2.distance(lastClickPos, movement.position) < 4) {
         lastClickAt = null
         end()
         return
@@ -227,12 +227,12 @@ export function createMeasureController(viewer, mode) {
     if (escListener) { window.removeEventListener('keydown', escListener); escListener = null }
   }
 
-  /** 双击结束：无条件移除双击第一击冗余点 → 点数不足则取消，否则定格 */
+  /** 双击结束：移除双击第一击冗余点 → 点数不足则还原并忽略（防快速加点误判清空），否则定格 */
   function end() {
-    if (positions.length >= 1) positions.pop()
+    const popped = positions.length >= 1 ? positions.pop() : null
     if (positions.length < MIN_POINTS) {
-      clear()
-      if (onCancelCb) onCancelCb()
+      // 点数不足：还原被移除的点，忽略本次双击（防止连续加点被误判为双击而清空）
+      if (popped) positions.push(popped)
       return
     }
     stopEvents()
