@@ -98,4 +98,12 @@ public interface SpatialQueryMapper {
      * @return 道路总长度（度，需转换）
      */
     Map<String, Object> selectRoadStats();
+
+    /**
+     * 查询所有宿舍楼质心坐标（供食堂覆盖计算）
+     *
+     * @return 宿舍列表（id, name, lng, lat）
+     */
+    @org.apache.ibatis.annotations.Select("SELECT id, name, ST_X(ST_Centroid(geom)) AS lng, ST_Y(ST_Centroid(geom)) AS lat FROM dormitory ORDER BY id")
+    List<Map<String, Object>> findDormitoryCentroids();
 }
