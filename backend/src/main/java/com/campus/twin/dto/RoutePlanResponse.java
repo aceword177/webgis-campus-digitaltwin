@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 航线规划响应
@@ -37,6 +38,15 @@ public class RoutePlanResponse implements Serializable {
     /** 终点最近网格节点ID */
     private Integer endNodeId;
 
-    /** 是否避让了限飞区 */
+    /** 是否避让了限飞区（直线穿越 && 规划路径不再穿越 = true） */
     private Boolean avoidedNoFlyZone;
+
+    /** 起终点直线是否穿越限飞区 */
+    private Boolean straightLineCrossZone;
+
+    /** A* 规划路径是否仍与限飞区相交（true = 避让不彻底的警告） */
+    private Boolean routeStillCrossZone;
+
+    /** 直线穿越的限飞区明细（id/name/level） */
+    private List<Map<String, Object>> crossedZones;
 }

@@ -89,15 +89,32 @@ public class RouteServiceImpl implements RouteService {
         // Step 7: 计算预计飞行时间
         Integer estimatedSeconds = (int) Math.ceil(distanceM / FLIGHT_SPEED);
 
-        // Step 8: 检测是否避让了限飞区
-        // 对比直线距离和实际路径距离，如果实际路径明显更长，说明进行了避让
-        double straightDistance = calculateStraightDistance(
+        // Step 8: 真实穿越检测（直线 vs A* 规划路径）
+        // 8.1 起终点直线是否穿越限飞区（返回穿越明细）
+        List<Map<String, Object>> crossedZones = navigationMapper.checkLineCrossNoFlyZone(
                 request.getStartLng(), request.getStartLat(),
                 request.getEndLng(), request.getEndLat());
-        boolean avoidedNoFlyZone = distanceM > straightDistance * 1.1; // 实际路径比直线长10%以上则认为有避让
+        boolean straightLineCrossZone = crossedZones != null && !crossedZones.isEmpty();
 
-        log.info("航线规划完成: 距离={}m, 预计时间={}s, 途径点={}, 避让限飞区={}",
-                distanceM, estimatedSeconds, waypoints.size(), avoidedNoFlyZone);
+        // 8.2 A* 规划路径（途经的边）是否仍与限飞区相交
+        // pgr_astar 返回结果中 edge=-1 表示起点无入边，需过滤
+        List<Integer> edgeIds = pathResult.stream()
+                .filter(m -> m.get("edge") != null && ((Number) m.get("edge")).intValue() > 0)
+                .map(m -> ((Number) m.get("edge")).intValue())
+                .distinct()
+                .collect(Collectors.toList());
+        boolean routeStillCrossZone = false;
+        if (!edgeIds.isEmpty()) {
+            List<Map<String, Object>> pathCrossZones = navigationMapper.checkPathCrossNoFlyZone(edgeIds);
+            routeStillCrossZone = pathCrossZones != null && !pathCrossZones.isEmpty();
+        }
+
+        // 成功避让 = 直线穿越限飞区 && 规划路径不再穿越
+        boolean avoidedNoFlyZone = straightLineCrossZone && !routeStillCrossZone;
+
+        log.info("航线规划完成: 距离={}m, 预计时间={}s, 途径点={}, 直线穿越限飞区={}, 路径仍穿越={}, 成功避让={}",
+                distanceM, estimatedSeconds, waypoints.size(),
+                straightLineCrossZone, routeStillCrossZone, avoidedNoFlyZone);
 
         return RoutePlanResponse.builder()
                 .routeGeojson(routeGeojson)
@@ -109,6 +126,9 @@ public class RouteServiceImpl implements RouteService {
                 .startNodeId(startNodeId)
                 .endNodeId(endNodeId)
                 .avoidedNoFlyZone(avoidedNoFlyZone)
+                .straightLineCrossZone(straightLineCrossZone)
+                .routeStillCrossZone(routeStillCrossZone)
+                .crossedZones(crossedZones)
                 .build();
     }
 
@@ -174,19 +194,5 @@ public class RouteServiceImpl implements RouteService {
             log.warn("解析航线 GeoJSON 途径点失败: {}", e.getMessage());
         }
         return waypoints;
-    }
-
-    /**
-     * 计算两点间直线距离（米），用经纬度近似计算
-     */
-    private double calculateStraightDistance(double lng1, double lat1, double lng2, double lat2) {
-        double R = 6371000; // 地球半径(米)
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
     }
 }

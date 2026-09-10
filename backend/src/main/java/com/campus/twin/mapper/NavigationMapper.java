@@ -67,4 +67,17 @@ public interface NavigationMapper {
             @Param("startLat") Double startLat,
             @Param("endLng") Double endLng,
             @Param("endLat") Double endLat);
+
+    /**
+     * 检测 A* 规划路径（途经的边集合）是否穿越限飞区
+     * 返回穿越的限飞区列表（id/name/level），空列表表示路径已成功绕行
+     */
+    @Select("<script>" +
+            "SELECT DISTINCT nfz.id, nfz.name, nfz.level " +
+            "FROM no_fly_zone nfz " +
+            "JOIN drone_nav_edge e ON ST_Intersects(nfz.geom, e.geom) " +
+            "WHERE e.id IN " +
+            "<foreach collection='edgeIds' item='eid' open='(' separator=',' close=')'>#{eid}</foreach>" +
+            "</script>")
+    List<Map<String, Object>> checkPathCrossNoFlyZone(@Param("edgeIds") List<Integer> edgeIds);
 }
