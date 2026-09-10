@@ -16,7 +16,8 @@ import {
   loadDrones as loadDroneEntities, createDroneEntity, getDroneColor,
   loadNoFlyZones as loadNoFlyZoneEntities,
   loadRoute, loadRestaurantMarkers, parseRouteGeojson,
-  createDroneAnimation, getTableNameByType, computeDistance, formatDistance, formatArea
+  createDroneAnimation, getTableNameByType, computeDistance, formatDistance, formatArea,
+  flyToTarget
 } from '@/utils/cesium'
 
 const mapStore = useMapStore()
@@ -46,11 +47,8 @@ onMounted(async () => {
     if (bounds) {
       mapStore.campusCenter = [bounds.center_lng, bounds.center_lat]
       mapStore.campusBounds = bounds
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(bounds.center_lng, bounds.center_lat, 600),
-        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
-        duration: 2
-      })
+      // 定位校园：相机从校园南侧俯视，校园中心位于视野中心
+      flyToTarget(viewer, bounds.center_lng, bounds.center_lat, 600, 2)
     }
   } catch (e) {
     console.warn('获取校园边界失败:', e)
@@ -449,15 +447,11 @@ function registerCustomEventListeners(viewer) {
       if (route) {
         const ds = loadRoute(viewer, route, `航线-${e.detail.orderId}`, Cesium.Color.YELLOW)
         mapStore.dataSources[`route-${e.detail.orderId}`] = ds
-        // 飞行到航线
+        // 飞行到航线中点（目标位于视野中心）
         const coords = parseRouteGeojson(route.route_geom)
         if (coords.length) {
           const mid = coords[Math.floor(coords.length / 2)]
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(mid[0], mid[1], 200),
-            orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
-            duration: 1.5
-          })
+          flyToTarget(viewer, mid[0], mid[1], 200, 1.5)
         }
       }
     } catch (err) { console.error('显示航线失败:', err) }

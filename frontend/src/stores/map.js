@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import * as Cesium from 'cesium'
+import { flyToTarget } from '@/utils/cesium'
 
 /**
  * 地图全局状态管理
@@ -93,8 +94,14 @@ export const useMapStore = defineStore('map', () => {
     scene.skyAtmosphere.show = true
     scene.fog.enabled = true
     scene.globe.depthTestAgainstTerrain = false
+    // 初始视图：相机位于校园南侧俯视，目标（校园中心）位于视野中心
+    const campusHeight = 800
     viewer.value.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(campusCenter.value[0], campusCenter.value[1], 800),
+      destination: Cesium.Cartesian3.fromDegrees(
+        campusCenter.value[0],
+        campusCenter.value[1] - campusHeight / 111320,
+        campusHeight
+      ),
       orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 }
     })
     return viewer.value
@@ -102,11 +109,7 @@ export const useMapStore = defineStore('map', () => {
 
   function flyToCampus() {
     if (!viewer.value) return
-    viewer.value.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(campusCenter.value[0], campusCenter.value[1], 600),
-      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
-      duration: 2
-    })
+    flyToTarget(viewer.value, campusCenter.value[0], campusCenter.value[1], 600, 2)
   }
 
   function setLayerVisible(layerName, visible) {

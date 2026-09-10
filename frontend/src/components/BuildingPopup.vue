@@ -68,6 +68,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import * as Cesium from 'cesium'
 import { Close } from '@element-plus/icons-vue'
 import { useMapStore } from '@/stores/map'
+import { flyToTarget } from '@/utils/cesium'
 import { ElMessage } from 'element-plus'
 
 const mapStore = useMapStore()
@@ -156,15 +157,8 @@ function close() {
 function locate() {
   const viewer = mapStore.viewer
   if (!viewer || !building.value) return
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(building.value.lng, building.value.lat, 150),
-    orientation: {
-      heading: 0,
-      pitch: Cesium.Math.toRadians(-45),
-      roll: 0
-    },
-    duration: 1.5
-  })
+  // 相机从建筑南侧俯视，建筑位于视野中心
+  flyToTarget(viewer, building.value.lng, building.value.lat, 150, 1.5)
 }
 
 function queryBuffer() {
@@ -174,11 +168,8 @@ function queryBuffer() {
 function locateDrone() {
   const viewer = mapStore.viewer
   if (!viewer || !building.value) return
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(building.value.current_lng, building.value.current_lat, 150),
-    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
-    duration: 1.5
-  })
+  // 相机从无人机南侧俯视，无人机位于视野中心
+  flyToTarget(viewer, building.value.current_lng, building.value.current_lat, 150, 1.5)
 }
 
 function formatArea(areaDeg) {

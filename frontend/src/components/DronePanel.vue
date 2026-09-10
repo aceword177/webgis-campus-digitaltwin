@@ -78,6 +78,7 @@ import { Refresh, Monitor, Lightning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getDrones } from '@/api/drone'
 import { useMapStore } from '@/stores/map'
+import { flyToTarget } from '@/utils/cesium'
 import * as Cesium from 'cesium'
 
 const mapStore = useMapStore()
@@ -136,11 +137,8 @@ function batteryClass(pct) {
 function locateDrone(drone) {
   const viewer = mapStore.viewer
   if (!viewer) return
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(drone.current_lng, drone.current_lat, 150),
-    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
-    duration: 1.5
-  })
+  // 相机从无人机南侧俯视，无人机位于视野中心
+  flyToTarget(viewer, drone.current_lng, drone.current_lat, 150, 1.5)
   ElMessage.info(`已定位到 ${drone.drone_no}`)
 }
 </script>

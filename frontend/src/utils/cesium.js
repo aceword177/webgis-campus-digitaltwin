@@ -23,6 +23,35 @@ export const VENUE_COLORS = {
 }
 
 /**
+ * 相机 flyTo 定位到目标，保证目标位于视野中心
+ *
+ * 背景：camera.flyTo({ destination }) 的 destination 是"相机位置"而非目标位置。
+ * 若把相机放到目标正上方 + heading=0(朝北)/pitch=-45(向下45°)，
+ * 视线与地面的交点会落在目标北侧 height 米处，导致视野中心偏移到目标"上面"。
+ *
+ * 修复：把相机放到目标南侧（纬度向南偏移 height 米，水平距离=height/tan45°=height），
+ * 相机朝正北向下 45° 俯视，视线中心恰好落在目标上。
+ *
+ * @param {Cesium.Viewer} viewer
+ * @param {Number} lng 目标经度
+ * @param {Number} lat 目标纬度
+ * @param {Number} height 相机高度(米)
+ * @param {Number} duration 动画时长(秒)
+ */
+export function flyToTarget(viewer, lng, lat, height, duration = 1.5) {
+  const latOffset = height / 111320 // 1度纬度 ≈ 111320m，向南偏移使目标居中
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lng, lat - latOffset, height),
+    orientation: {
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-45),
+      roll: 0
+    },
+    duration
+  })
+}
+
+/**
  * 将后端返回的要素列表（含 geom GeoJSON 字符串）转为标准 GeoJSON FeatureCollection
  * @param {Array} features - 后端返回的要素列表
  * @returns {Object} GeoJSON FeatureCollection
