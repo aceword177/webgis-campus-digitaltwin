@@ -848,3 +848,73 @@ export const ORDER_STATUS_COLORS = {
   delivered: '#909399',
   cancelled: '#F56C6C'
 }
+
+/**
+ * 加载食堂缓冲区（3 层同心圆形参考圈：30s/60s/90s）
+ * 圈=时间参考线（直线半径），实际覆盖宿舍由点击时高亮表达
+ */
+export function loadCanteenBuffer(viewer, coverage, name) {
+  const dataSource = new Cesium.CustomDataSource(name)
+  const TIER_STYLE = [
+    { seconds: 30, color: Cesium.Color.fromCssColorString('#2ECC40') },
+    { seconds: 60, color: Cesium.Color.fromCssColorString('#FF851B') },
+    { seconds: 90, color: Cesium.Color.fromCssColorString('#FF4136') }
+  ]
+  for (const c of coverage || []) {
+    if (c.center_lng == null || c.center_lat == null) continue
+    for (const tier of c.tiers || []) {
+      const style = TIER_STYLE.find(t => t.seconds === tier.seconds) || TIER_STYLE[0]
+      const r = tier.radius || 0
+      dataSource.entities.add({
+        id: `canteen-tier-${c.canteen_id}-${tier.seconds}`,
+        position: Cesium.Cartesian3.fromDegrees(c.center_lng, c.center_lat, 0),
+        ellipse: {
+          semiMajorAxis: r,
+          semiMinorAxis: r,
+          height: 2, // 贴地（不用 clampToGround，避免 GroundPrimitive 描边渲染问题）
+          material: style.color.withAlpha(0.15),
+          outline: true,
+          outlineColor: style.color.withAlpha(0.7),
+          outlineWidth: 1.5
+        },
+        properties: {
+          isCanteenTier: true,
+          canteenId: c.canteen_id,
+          seconds: tier.seconds
+        }
+      })
+    }
+  }
+  viewer.dataSources.add(dataSource)
+  return dataSource
+}
+
+/**
+ * 创建宿舍覆盖高亮（红色标记点 + 名称标签），返回 dataSource 供清除
+ */
+export function createDormitoryHighlight(viewer, dormList) {
+  const dataSource = new Cesium.CustomDataSource('宿舍覆盖高亮')
+  for (const d of dormList || []) {
+    if (d.lng == null || d.lat == null) continue
+    dataSource.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(d.lng, d.lat, 30),
+      point: {
+        pixelSize: 14,
+        color: Cesium.Color.RED.withAlpha(0.85),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2
+      },
+      label: {
+        text: d.name,
+        font: '12px sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.RED,
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -20)
+      }
+    })
+  }
+  viewer.dataSources.add(dataSource)
+  return dataSource
+}
