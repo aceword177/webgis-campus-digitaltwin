@@ -1,5 +1,7 @@
 -- ============================================================
 -- 安装 pgrouting 并构建无人机导航网格（A* 路径规划用）
+-- 特性：节点安全缓冲判定 + 边级限飞区过滤 + 靠近限飞区成本惩罚
+-- 可调参数：v_safety_m / v_penalty_range_m / v_penalty_factor（节点段与边段两处，需保持一致）
 -- ============================================================
 
 -- 1. 安装 pgrouting 扩展
@@ -39,6 +41,7 @@ CREATE TABLE drone_nav_edge (
     target      INTEGER NOT NULL REFERENCES drone_nav_node(id),
     cost        NUMERIC(8,2) NOT NULL,
     reverse_cost NUMERIC(8,2) NOT NULL,
+    zone_dist_m  NUMERIC(8,2),       -- 边到最近限飞区距离(米)；NULL 表示远离限飞区（无惩罚）
     x1          NUMERIC(10,6) NOT NULL,
     y1          NUMERIC(10,6) NOT NULL,
     x2          NUMERIC(10,6) NOT NULL,
@@ -64,6 +67,10 @@ DECLARE
     v_max_lat     NUMERIC;
     v_center_lat  NUMERIC;
     v_cell_size   NUMERIC := 15.0;  -- 网格分辨率 15米
+    -- ===== 限飞区避让参数（节点段与边段两处声明，修改时保持一致）=====
+    v_safety_m         NUMERIC := 5.0;   -- 禁飞安全缓冲(米)：节点/边距限飞区小于该值即不可用
+    v_penalty_range_m  NUMERIC := 15.0;  -- 成本惩罚作用范围(米)：该范围内越靠近限飞区 cost 越高
+    v_penalty_factor   NUMERIC := 1.0;   -- 成本惩罚系数
     v_lng_step    NUMERIC;
     v_lat_step    NUMERIC;
     v_col_count   INTEGER;
@@ -106,10 +113,12 @@ BEGIN
             v_lng := v_min_lng + (v_col + 0.5) * v_lng_step;
             v_lat := v_min_lat + (v_row + 0.5) * v_lat_step;
 
-            -- 判断该网格是否与限飞区相交（用中心点判断，简化处理）
+            -- 判断该网格是否可用：距限飞区（含安全缓冲 v_safety_m）小于阈值则不可飞
             SELECT NOT EXISTS (
                 SELECT 1 FROM no_fly_zone nfz
-                WHERE ST_Intersects(nfz.geom, ST_SetSRID(ST_MakePoint(v_lng, v_lat), 4326))
+                WHERE ST_DWithin(nfz.geom::geography,
+                                 ST_SetSRID(ST_MakePoint(v_lng, v_lat), 4326)::geography,
+                                 v_safety_m)
             ) INTO v_walkable;
 
             INSERT INTO drone_nav_node (grid_col, grid_row, lng, lat, geom, is_walkable)
@@ -129,10 +138,19 @@ SELECT is_walkable, COUNT(*) FROM drone_nav_node GROUP BY is_walkable;
 -- ============================================================
 DO $$
 DECLARE
-    v_node        RECORD;
-    v_neighbor    RECORD;
-    v_cost        NUMERIC;
-    v_edge_count  INTEGER := 0;
+    v_node          RECORD;
+    v_neighbor      RECORD;
+    v_edge_geom     geometry(LineString, 4326);
+    v_base_cost     NUMERIC;
+    v_zone_dist     NUMERIC;
+    v_final_cost    NUMERIC;
+    v_edge_count    INTEGER := 0;
+    v_filtered      INTEGER := 0;   -- 因穿越限飞区(含缓冲)被过滤的边数
+    v_penalized     INTEGER := 0;   -- 受成本惩罚的边数
+    -- ===== 限飞区避让参数（与节点段保持一致）=====
+    v_safety_m         NUMERIC := 5.0;
+    v_penalty_range_m  NUMERIC := 15.0;
+    v_penalty_factor   NUMERIC := 1.0;
 BEGIN
     -- 遍历每个可飞行节点
     FOR v_node IN SELECT id, grid_col, grid_row, lng, lat, geom
@@ -148,29 +166,58 @@ BEGIN
                              AND id > v_node.id  -- 避免重复边
                            ORDER BY id LOOP
 
-            -- 计算边的代价 = 两点间距离（米）
+            v_edge_geom := ST_MakeLine(v_node.geom, v_neighbor.geom);
+
+            -- 边级避让：源-目标线段穿越限飞区（含安全缓冲）则过滤，不建边
+            -- 解决"两端点都在区外但连线穿过限飞区"被网格粒度漏掉的问题
+            IF EXISTS (
+                SELECT 1 FROM no_fly_zone nfz
+                WHERE ST_DWithin(nfz.geom::geography, v_edge_geom::geography, v_safety_m)
+            ) THEN
+                v_filtered := v_filtered + 1;
+                CONTINUE;
+            END IF;
+
+            -- 基础代价 = 两点间距离（米）
             SELECT ST_Distance(
                 ST_Transform(v_node.geom, 3857),
                 ST_Transform(v_neighbor.geom, 3857)
-            ) INTO v_cost;
+            ) INTO v_base_cost;
 
-            INSERT INTO drone_nav_edge (source, target, cost, reverse_cost,
+            -- 计算该边到最近限飞区的距离（仅在惩罚作用范围内查询）
+            SELECT MIN(ST_Distance(nfz.geom::geography, v_edge_geom::geography))
+            INTO v_zone_dist
+            FROM no_fly_zone nfz
+            WHERE ST_DWithin(nfz.geom::geography, v_edge_geom::geography, v_penalty_range_m);
+
+            -- 成本惩罚（软约束）：越靠近限飞区 cost 越高，A* 倾向选择远离限飞区的路径
+            -- 未命中惩罚范围（v_zone_dist IS NULL）时 COALESCE 为 v_penalty_range_m，惩罚项为 0
+            v_final_cost := v_base_cost * (1 + v_penalty_factor *
+                GREATEST(0, v_penalty_range_m - COALESCE(v_zone_dist, v_penalty_range_m))
+                / v_penalty_range_m);
+
+            IF v_zone_dist IS NOT NULL THEN
+                v_penalized := v_penalized + 1;
+            END IF;
+
+            INSERT INTO drone_nav_edge (source, target, cost, reverse_cost, zone_dist_m,
                                          x1, y1, x2, y2, geom)
-            VALUES (v_node.id, v_neighbor.id, v_cost, v_cost,
-                    v_node.lng, v_node.lat, v_neighbor.lng, v_neighbor.lat,
-                    ST_MakeLine(v_node.geom, v_neighbor.geom));
+            VALUES (v_node.id, v_neighbor.id, v_final_cost, v_final_cost, v_zone_dist,
+                    v_node.lng, v_node.lat, v_neighbor.lng, v_neighbor.lat, v_edge_geom);
 
             v_edge_count := v_edge_count + 1;
         END LOOP;
     END LOOP;
 
-    RAISE NOTICE '导航边生成完成，共 % 条边', v_edge_count;
+    RAISE NOTICE '导航边生成完成：总边数 %, 穿越限飞区被过滤 %, 受成本惩罚 %',
+        v_edge_count, v_filtered, v_penalized;
 END $$;
 
 -- 统计
 SELECT COUNT(*) AS total_nodes FROM drone_nav_node;
 SELECT COUNT(*) AS walkable_nodes FROM drone_nav_node WHERE is_walkable = true;
 SELECT COUNT(*) AS total_edges FROM drone_nav_edge;
+SELECT COUNT(*) AS penalized_edges FROM drone_nav_edge WHERE zone_dist_m IS NOT NULL;
 
 -- ============================================================
 -- 6. 测试 A* 路径规划
