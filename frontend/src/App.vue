@@ -47,6 +47,11 @@
         <!-- 建筑/无人机弹窗 -->
         <BuildingPopup />
 
+        <!-- 测量信息条（实时汇总） -->
+        <div class="measure-info-slot">
+          <MeasureInfo />
+        </div>
+
         <!-- 底部工具栏 -->
         <div class="bottom-toolbar">
           <MeasureTool />
@@ -83,6 +88,7 @@ import RoutePlanPanel from '@/components/RoutePlanPanel.vue'
 import DeliveryStats from '@/components/DeliveryStats.vue'
 import BuildingPopup from '@/components/BuildingPopup.vue'
 import MeasureTool from '@/components/MeasureTool.vue'
+import MeasureInfo from '@/components/MeasureInfo.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)
@@ -200,6 +206,15 @@ function cancelPlanning() {
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
+}
+
+.measure-info-slot {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  pointer-events: none;
 }
 
 /* 航线规划模式横幅 */
