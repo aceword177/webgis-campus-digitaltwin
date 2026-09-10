@@ -68,6 +68,9 @@ onMounted(async () => {
   // 测量接线（内部注册 measureMode watch）
   setupMeasure(viewer)
 
+  // 移除 Cesium 默认双击缩放（双击左键=拉远视角），避免测量双击时视角跳变
+  viewer.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
+
   // 监听航线规划模式变化
   watch(routePlanMode, (mode) => {
     updatePlanHint(viewer, mode)
@@ -599,9 +602,6 @@ function setupMeasure(viewer) {
       mapStore.measureController = measureController
       measureController.onUpdate((snap) => {
         mapStore.measureSnapshot = { ...snap, phase: 'placing' }
-      })
-      measureController.onPending((snap) => {
-        mapStore.measureSnapshot = { ...snap, phase: 'pending' }
       })
       measureController.onEnd((snap) => {
         mapStore.measureSnapshot = { ...snap, phase: 'done' }

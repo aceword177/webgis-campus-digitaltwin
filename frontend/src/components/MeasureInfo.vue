@@ -12,8 +12,7 @@
       <span class="mi-item">面积 <b>{{ fmtArea(snap.area) }}</b></span>
       <span class="mi-item">周长 <b>{{ fmt(snap.perimeter) }}</b></span>
     </template>
-    <span v-if="snap.phase === 'pending'" class="mi-done">· 待确认</span>
-    <span v-else-if="snap.phase === 'done'" class="mi-done">· 已定格</span>
+    <span v-if="snap.phase === 'done'" class="mi-done">· 已定格</span>
   </div>
 </template>
 

@@ -2,13 +2,13 @@ import * as Cesium from 'cesium'
 import { computeDistance, formatDistance, formatArea } from './cesium'
 
 /**
- * 测量控制器：状态机 idle → placing → pending → done
- * 交互：左键加点 / 右键撤销 / 双击自检结束 / Esc 取消（pending 时 Esc=继续）
+ * 测量控制器：状态机 idle → placing → done
+ * 交互：左键加点 / 右键撤销 / 双击自检结束 / Esc 取消
  * 语义：stop() 停事件保留结果实体；clear() 全清（结果+预览）
  */
 export function createMeasureController(viewer, mode) {
   let handler = null
-  let phase = 'idle' // idle | placing | pending | done
+  let phase = 'idle' // idle | placing | done
   let positions = [] // Cartesian3[]
   let entities = []  // 正式实体（节点/线/面/标签）
   let previewPoint = null
@@ -18,7 +18,6 @@ export function createMeasureController(viewer, mode) {
   let onUpdateCb = null
   let onEndCb = null
   let onCancelCb = null
-  let onPendingCb = null
   let escListener = null
   // 双击自检状态
   let lastClickAt = null
@@ -215,7 +214,6 @@ export function createMeasureController(viewer, mode) {
     handler.setInputAction(() => undo(), Cesium.ScreenSpaceEventType.RIGHT_CLICK)
     escListener = (e) => {
       if (e.key === 'Escape') {
-        if (phase === 'pending') { resume(); return }
         clear()
         if (onCancelCb) onCancelCb()
       }
@@ -229,7 +227,7 @@ export function createMeasureController(viewer, mode) {
     if (escListener) { window.removeEventListener('keydown', escListener); escListener = null }
   }
 
-  /** 双击结束：无条件移除双击第一击冗余点 → 点数不足则取消，否则进入 pending 待确认 */
+  /** 双击结束：无条件移除双击第一击冗余点 → 点数不足则取消，否则定格 */
   function end() {
     if (positions.length >= 1) positions.pop()
     if (positions.length < MIN_POINTS) {
@@ -240,21 +238,8 @@ export function createMeasureController(viewer, mode) {
     stopEvents()
     clearPreview()
     renderFormal()
-    phase = 'pending'
-    if (onPendingCb) onPendingCb(getSnapshot())
-  }
-
-  /** 确认结束：phase→done，触发 onEnd（接线方会置空 measureMode） */
-  function confirmEnd() {
     phase = 'done'
     if (onEndCb) onEndCb(getSnapshot())
-  }
-
-  /** 从 pending 继续加点：重新绑定事件，回到 placing */
-  function resume() {
-    phase = 'placing'
-    bindEvents()
-    emitUpdate()
   }
 
   /** 停止测量：停事件、清预览、回 idle；保留正式结果实体（供查看） */
@@ -282,12 +267,9 @@ export function createMeasureController(viewer, mode) {
     stop,
     clear,
     undo,
-    confirmEnd,
-    resume,
     getSnapshot,
     onUpdate(cb) { onUpdateCb = cb },
     onEnd(cb) { onEndCb = cb },
-    onCancel(cb) { onCancelCb = cb },
-    onPending(cb) { onPendingCb = cb }
+    onCancel(cb) { onCancelCb = cb }
   }
 }
