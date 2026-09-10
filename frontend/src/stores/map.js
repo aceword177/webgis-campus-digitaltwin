@@ -11,6 +11,9 @@ import { flyToTarget } from '@/utils/cesium'
 export const useMapStore = defineStore('map', () => {
   // ========== 原有状态 ==========
   const viewer = ref(null)
+  // ========== 测量状态 ==========
+  const measureSnapshot = ref(null)
+  const measureController = ref(null)
   const layers = reactive({
     baseImagery: true,
     teaching: true,
@@ -223,6 +226,7 @@ export const useMapStore = defineStore('map', () => {
   return {
     // 原有
     viewer, layers, dataSources, selectedBuilding, measureMode,
+    measureSnapshot, measureController,
     campusCenter, campusBounds,
     initViewer, flyToCampus, setLayerVisible, selectBuilding, clearSelection,
     setMeasureMode, destroyViewer,
