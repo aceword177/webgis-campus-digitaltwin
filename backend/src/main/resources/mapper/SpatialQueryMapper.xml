@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.twin.mapper.SpatialQueryMapper">
+
+    <!--
+        各表字段差异说明：
+        - school:           id, geom, SHAPE_Leng, SHAPE_Area（无 name, 无 height）
+        - road:             id, geom, name, SHAPE_Leng（无 height, 无 SHAPE_Area）
+        - playground/basketball_court/tennis_court: id, geom, name, SHAPE_Leng, SHAPE_Area（无 height）
+        - teaching_building/dormitory/other_buildings: id, geom, name, height, SHAPE_Leng, SHAPE_Area
+    -->
+
+    <!-- 点选查询：判断坐标点落在哪个要素内 -->
+    <select id="selectByPoint" resultType="java.util.Map">
+        SELECT
+            id,
+            <if test='table != "school"'>name,</if>
+            <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            "SHAPE_Leng" AS shape_leng,
+            <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
+            ST_AsGeoJSON(geom) AS geom
+        FROM ${table}
+        WHERE ST_Intersects(
+            geom,
+            ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)
+        )
+        LIMIT 1
+    </select>
+
+    <!-- 缓冲区查询：查询指定半径范围内的要素，按距离升序 -->
+    <select id="selectByBuffer" resultType="java.util.Map">
+        SELECT
+            id,
+            <if test='table != "school"'>name,</if>
+            <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            ST_AsGeoJSON(geom) AS geom,
+            ROUND(
+                ST_Distance(
+                    ST_Transform(ST_SetSRID(geom, 4326), 3857),
+                    ST_Transform(ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326), 3857)
+                )::numeric, 2
+            ) AS distance_m
+        FROM ${table}
+        WHERE ST_DWithin(
+            ST_Transform(ST_SetSRID(geom, 4326), 3857),
+            ST_Transform(ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326), 3857),
+            #{radius}
+        )
+        ORDER BY distance_m ASC
+    </select>
+
+    <!-- 查询整表 GeoJSON 数据 -->
+    <select id="selectAllGeoJson" resultType="java.util.Map">
+        SELECT
+            id,
+            <if test='table != "school"'>name,</if>
+            <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            "SHAPE_Leng" AS shape_leng,
+            <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
+            ST_AsGeoJSON(geom) AS geom
+        FROM ${table}
+        ORDER BY id ASC
+    </select>
+
+    <!-- 根据 ID 查询单个要素 -->
+    <select id="selectById" resultType="java.util.Map">
+        SELECT
+            id,
+            <if test='table != "school"'>name,</if>
+            <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            "SHAPE_Leng" AS shape_leng,
+            <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
+            ST_AsGeoJSON(geom) AS geom,
+            ST_AsGeoJSON(ST_Centroid(geom)) AS centroid
+        FROM ${table}
+        WHERE id = #{id}
+    </select>
+
+    <!-- 计算点到指定要素的距离（米，Web墨卡托投影下计算） -->
+    <select id="selectDistanceToFeature" resultType="java.lang.Double">
+        SELECT ST_Distance(
+            ST_Transform(ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326), 3857),
+            ST_Transform(ST_SetSRID(geom, 4326), 3857)
+        ) AS distance_m
+        FROM ${table}
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询表记录数 -->
+    <select id="selectCount" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM ${table}
+    </select>
+
+    <!-- 查询校园边界范围和中心点 -->
+    <select id="selectCampusBounds" resultType="java.util.Map">
+        SELECT
+            ST_XMin(ST_Extent(geom)) AS minx,
+            ST_YMin(ST_Extent(geom)) AS miny,
+            ST_XMax(ST_Extent(geom)) AS maxx,
+            ST_YMax(ST_Extent(geom)) AS maxy,
+            ST_X(ST_Centroid(ST_Extent(geom))) AS center_lng,
+            ST_Y(ST_Centroid(ST_Extent(geom))) AS center_lat,
+            ST_Area(ST_Transform(ST_SetSRID(ST_Extent(geom), 4326), 3857)) AS area_sqm
+        FROM school
+    </select>
+
+    <!-- 建筑统计：总数、总面积、平均楼层 -->
+    <select id="selectBuildingStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS total_count,
+            ROUND(SUM(ST_Area(ST_Transform(ST_SetSRID(geom, 4326), 3857)))::numeric, 2) AS total_area_sqm,
+            ROUND(AVG(height)::numeric, 1) AS avg_floors,
+            MAX(height) AS max_floors
+        FROM (
+            SELECT geom, height FROM teaching_building
+            UNION ALL
+            SELECT geom, height FROM dormitory
+            UNION ALL
+            SELECT geom, height FROM other_buildings
+        ) AS all_buildings
+    </select>
+
+    <!-- 道路统计：总条数、总长度（米） -->
+    <select id="selectRoadStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS total_count,
+            ROUND(SUM(ST_Length(ST_Transform(ST_SetSRID(geom, 4326), 3857)))::numeric, 2) AS total_length_m
+        FROM road
+    </select>
+
+</mapper>

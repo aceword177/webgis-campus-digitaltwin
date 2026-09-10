@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.twin.mapper.TileMapper">
+
+    <!--
+        MVT 矢量瓦片生成
+        利用 PostGIS 原生函数：
+        - ST_TileEnvelope: 计算瓦片边界（Web Mercator 3857）
+        - ST_AsMVTGeom: 将几何转为瓦片坐标空间
+        - ST_AsMVT: 打包为 MVT (Mapbox Vector Tile) 格式
+        字段按表名条件选择（各表字段不同）
+    -->
+    <select id="selectMvt" resultType="byte[]">
+        WITH bounds AS (
+            SELECT ST_TileEnvelope(#{z}, #{x}, #{y}) AS geom
+        ),
+        mvtgeom AS (
+            SELECT
+                id,
+                <if test='table != "school"'>name,</if>
+                <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+                ST_AsMVTGeom(
+                    ST_Transform(ST_SetSRID(t.geom, 4326), 3857),
+                    (SELECT geom FROM bounds),
+                    4096,
+                    64,
+                    true
+                ) AS geom
+            FROM ${table} t
+            WHERE ST_Intersects(
+                ST_Transform(ST_SetSRID(t.geom, 4326), 3857),
+                (SELECT geom FROM bounds)
+            )
+        )
+        SELECT ST_AsMVT(mvtgeom.*, '${table}', 4096, 'geom')
+        FROM mvtgeom
+        WHERE geom IS NOT NULL
+    </select>
+
+</mapper>
