@@ -131,12 +131,17 @@ const activeNames = ref(['base', 'building', 'road', 'venue', 'school', 'drone',
   border-radius: 8px;
   overflow: hidden;
   color: #fff;
+  /* 与 App.vue .panel-wrapper 高度一致，内容超高时面板内部滚动 */
+  max-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-header {
   padding: 12px 16px;
   background: rgba(64, 158, 255, 0.3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .panel-title {
@@ -150,6 +155,9 @@ const activeNames = ref(['base', 'building', 'road', 'venue', 'school', 'drone',
   --el-collapse-content-bg-color: transparent;
   --el-collapse-header-text-color: #fff;
   --el-collapse-content-text-color: #fff;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .layer-collapse :deep(.el-collapse-item__header) {
