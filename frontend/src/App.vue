@@ -55,13 +55,8 @@
         <!-- 食堂覆盖浮窗 -->
         <CanteenCoveragePanel />
 
-        <!-- 食堂缓冲区图例 -->
-        <div v-if="mapStore.layers.canteenBuffer && mapStore.canteenCoverage" class="coverage-legend">
-          <div class="cl-item"><span class="cl-dot" style="background:#2ECC40"></span>30s · 150m</div>
-          <div class="cl-item"><span class="cl-dot" style="background:#FF851B"></span>60s · 300m</div>
-          <div class="cl-item"><span class="cl-dot" style="background:#FF4136"></span>90s · 450m</div>
-          <div class="cl-note">圆=时间参考线 · 高亮点=实际覆盖宿舍</div>
-        </div>
+        <!-- 食堂缓冲区覆盖查询面板 -->
+        <CanteenCoverageQuery />
 
         <!-- 底部工具栏 -->
         <div class="bottom-toolbar">
@@ -101,6 +96,7 @@ import BuildingPopup from '@/components/BuildingPopup.vue'
 import MeasureTool from '@/components/MeasureTool.vue'
 import MeasureInfo from '@/components/MeasureInfo.vue'
 import CanteenCoveragePanel from '@/components/CanteenCoveragePanel.vue'
+import CanteenCoverageQuery from '@/components/CanteenCoverageQuery.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)
@@ -257,19 +253,5 @@ function cancelPlanning() {
 }
 
 /* 食堂缓冲区图例 */
-.coverage-legend {
-  position: absolute;
-  left: 16px;
-  bottom: 120px;
-  z-index: 11;
-  background: rgba(20, 30, 48, 0.9);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: #fff;
-  font-size: 12px;
-  pointer-events: none;
-}
-.cl-item { display: flex; align-items: center; gap: 6px; line-height: 1.8; }
-.cl-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.cl-note { color: rgba(255,255,255,0.55); margin-top: 4px; font-size: 11px; }
+
 </style>
