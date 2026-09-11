@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 /**
  * 自动补单调度：每 30 秒检查一次
@@ -98,7 +99,8 @@ public class AutoOrderScheduler {
                 }
 
                 DeliveryOrder order = new DeliveryOrder();
-                order.setOrderNo("DD" + LocalDateTime.now().format(ORDER_NO_FORMAT) + RANDOM.nextInt(1000));
+                order.setOrderNo("DD" + LocalDateTime.now().format(ORDER_NO_FORMAT)
+                        + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase());
                 Restaurant restaurant = restaurants.get(RANDOM.nextInt(restaurants.size()));
                 Dormitory dormitory = dormitories.get(RANDOM.nextInt(dormitories.size()));
                 order.setRestaurantId(restaurant.getId());

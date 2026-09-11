@@ -36,6 +36,12 @@ const tiers = computed(() => {
 })
 
 function showTier(t) {
+  // 与查询面板（CanteenCoverageQuery）保持一致：档位点击同时高亮对应缓冲圈 + 宿舍
+  mapStore.canteenActiveSelection = {
+    type: 'tier',
+    canteenId: popup.value.canteenId,
+    seconds: t.seconds
+  }
   mapStore.coveragePopup = {
     type: 'tier',
     canteenId: popup.value.canteenId,

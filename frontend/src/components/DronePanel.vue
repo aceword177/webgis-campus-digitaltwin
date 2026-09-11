@@ -2,7 +2,7 @@
   <div class="panel-container">
     <div class="panel-header">
       <span class="panel-title">无人机管理</span>
-      <el-button type="text" class="refresh-btn" @click="loadDrones()">
+      <el-button type="text" class="refresh-btn" @click="loadDrones(false)">
         <el-icon><Refresh /></el-icon>
       </el-button>
     </div>

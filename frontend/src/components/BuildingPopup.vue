@@ -18,11 +18,19 @@
           <span class="info-label">楼层</span>
           <span class="info-value">{{ building.height }} 层（约 {{ (building.height * 3.5).toFixed(1) }} 米）</span>
         </div>
-        <div class="info-row" v-if="building.shape_area">
+        <div class="info-row" v-if="building.area_sqm != null">
+          <span class="info-label">占地面积</span>
+          <span class="info-value">{{ formatAreaSqm(building.area_sqm) }}</span>
+        </div>
+        <div class="info-row" v-else-if="building.shape_area">
           <span class="info-label">占地面积</span>
           <span class="info-value">{{ formatArea(building.shape_area) }}</span>
         </div>
-        <div class="info-row" v-if="building.shape_leng">
+        <div class="info-row" v-if="building.perimeter_m != null">
+          <span class="info-label">周长</span>
+          <span class="info-value">{{ building.perimeter_m.toFixed(2) }} 米</span>
+        </div>
+        <div class="info-row" v-else-if="building.shape_leng">
           <span class="info-label">周长</span>
           <span class="info-value">{{ (building.shape_leng * 111000).toFixed(2) }} 米</span>
         </div>
@@ -173,8 +181,16 @@ function locateDrone() {
 }
 
 function formatArea(areaDeg) {
-  // 面积从平方度转平方米（近似）
+  // 面积从平方度转平方米（近似）——仅当后端未返回 area_sqm 时兜底
   const areaSqm = areaDeg * 111000 * 111000 * 0.7
+  if (areaSqm >= 10000) {
+    return (areaSqm / 10000).toFixed(2) + ' 公顷'
+  }
+  return areaSqm.toFixed(2) + ' m²'
+}
+
+function formatAreaSqm(areaSqm) {
+  // 后端 ST_Area(geom::geography) 真实平方米
   if (areaSqm >= 10000) {
     return (areaSqm / 10000).toFixed(2) + ' 公顷'
   }

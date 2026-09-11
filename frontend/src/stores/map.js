@@ -133,6 +133,16 @@ export const useMapStore = defineStore('map', () => {
       return
     }
 
+    // 飞行航线/订单航线：dataSource 以 route- 或 order-route- 开头（每条航线一个），需批量控制
+    if (layerName === 'routes') {
+      for (const [key, ds] of Object.entries(dataSources)) {
+        if ((key.startsWith('route-') || key.startsWith('order-route-')) && ds) {
+          ds.show = visible
+        }
+      }
+      return
+    }
+
     const ds = dataSources[layerName]
     if (ds) ds.show = visible
   }

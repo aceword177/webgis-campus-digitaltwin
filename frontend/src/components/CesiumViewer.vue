@@ -15,7 +15,7 @@ import {
   loadBuildings, loadVenues, loadRoads, loadSchoolBoundary,
   loadDrones as loadDroneEntities, createDroneEntity, getDroneColor,
   loadNoFlyZones as loadNoFlyZoneEntities,
-  loadRoute, loadRestaurantMarkers, parseRouteGeojson,
+  loadRoute, loadRestaurantMarkers, loadDormitoryMarkers, parseRouteGeojson,
   createDroneAnimation, getTableNameByType,
   flyToTarget, loadCanteenBuffer, createDormitoryHighlight
 } from '@/utils/cesium'
@@ -73,10 +73,19 @@ function applyCanteenSelection(viewer, selection) {
 }
 let droneAnimation = null
 let droneSyncTimer = null
+let animationFinishTimer = null // 动画结束轮询句柄（模块级，手动停止/送达时统一清理，防止泄漏）
 let currentAnimatedDroneId = null
 let eventListeners = []
 let droneTrailData = null
 const droneTrails = new Map()
+
+/** 清理动画结束轮询定时器（isFinished 轮询与手动停止共用同一清理入口） */
+function clearAnimationFinishTimer() {
+  if (animationFinishTimer) {
+    clearInterval(animationFinishTimer)
+    animationFinishTimer = null
+  }
+}
 
 // 航线规划提示标签
 let planHintLabel = null
@@ -137,6 +146,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (handler) handler.destroy()
   stopMeasure()
+  clearAnimationFinishTimer()
   if (droneAnimation) droneAnimation.stop()
   if (droneSyncTimer) clearInterval(droneSyncTimer)
   // 移除所有自定义事件监听
@@ -244,6 +254,14 @@ async function loadDeliveryData(viewer) {
       applyCanteenSelection(viewer, mapStore.canteenActiveSelection)
     }
   } catch (e) { console.warn('加载食堂缓冲区失败:', e) }
+
+  // 加载宿舍楼标记（图层面板开关）
+  try {
+    const dormitories = await getGeoJson('dormitory')
+    if (dormitories?.length) {
+      mapStore.dataSources.dormitoryMarkers = loadDormitoryMarkers(viewer, dormitories, '宿舍楼标记')
+    }
+  } catch (e) { console.warn('加载宿舍楼标记失败:', e) }
 }
 
 /** 启动无人机位置定时同步（每 2 秒一次，与后端实时推进节奏一致） */
@@ -439,12 +457,13 @@ function registerClickHandler(viewer) {
         return
       }
 
-      // 食堂标记：3 档覆盖概览
+      // 食堂标记：3 档覆盖概览（联动显示该食堂 3 个缓冲圈，与查询面板行为一致）
       if (entity.properties?.isRestaurant?.getValue()) {
         const canteen = (mapStore.canteenCoverage || []).find(
           c => c.canteen_id === entity.properties.id?.getValue()
         )
         if (canteen) {
+          mapStore.canteenActiveSelection = { type: 'canteen', canteenId: canteen.canteen_id }
           mapStore.coveragePopup = {
             type: 'overview',
             canteenId: canteen.canteen_id,
@@ -594,10 +613,11 @@ function registerCustomEventListeners(viewer) {
     if (droneAnimation) {
       // start() 内部会先定位(相机跳转到起点=无人机当前位置)再播放
       droneAnimation.start()
-      // 动画结束后自动停止
-      const checkFinish = setInterval(() => {
+      // 动画结束后自动停止（句柄模块级：手动停止/订单送达时也必须清理，否则轮询永不退出）
+      clearAnimationFinishTimer()
+      animationFinishTimer = setInterval(() => {
         if (droneAnimation?.isFinished()) {
-          clearInterval(checkFinish)
+          clearAnimationFinishTimer()
           mapStore.stopAnimation()
           droneAnimation.stop()
           droneAnimation = null
@@ -625,6 +645,7 @@ function registerCustomEventListeners(viewer) {
   const onPauseAnimation = () => droneAnimation?.pause()
   const onResumeAnimation = () => droneAnimation?.resume()
   const onStopAnimation = () => {
+    clearAnimationFinishTimer()
     if (droneAnimation) {
       droneAnimation.stop()
       droneAnimation = null
@@ -637,6 +658,7 @@ function registerCustomEventListeners(viewer) {
 
   // 订单送达：清除动画并恢复图标
   const onOrderDelivered = () => {
+    clearAnimationFinishTimer()
     if (droneAnimation) {
       droneAnimation.stop()
       droneAnimation = null

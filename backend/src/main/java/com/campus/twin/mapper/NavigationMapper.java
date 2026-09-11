@@ -41,11 +41,11 @@ public interface NavigationMapper {
 
     /**
      * 根据节点ID列表获取节点坐标，并按路径顺序连接成 LineString
-     * 同时计算总距离
+     * 同时计算总距离（geography 真实球面米，与无人机 haversine 推进口径一致）
      */
     @Select("SELECT " +
             "  ST_AsGeoJSON(ST_MakeLine(geom ORDER BY ordinality)) AS route_geojson, " +
-            "  ROUND(ST_Length(ST_Transform(ST_MakeLine(geom ORDER BY ordinality), 3857))::numeric, 2) AS distance_m " +
+            "  ROUND(ST_Length(ST_MakeLine(geom ORDER BY ordinality)::geography)::numeric, 2) AS distance_m " +
             "FROM drone_nav_node n " +
             "JOIN UNNEST(#{nodeIds}::int[]) WITH ORDINALITY AS t(id, ordinality) ON n.id = t.id")
     Map<String, Object> buildRouteFromNodes(@Param("nodeIds") String nodeIds);

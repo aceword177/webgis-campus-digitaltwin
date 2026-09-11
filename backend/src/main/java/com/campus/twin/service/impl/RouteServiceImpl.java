@@ -83,8 +83,17 @@ public class RouteServiceImpl implements RouteService {
         Double distanceM = routeData.get("distance_m") != null
                 ? ((Number) routeData.get("distance_m")).doubleValue() : 0.0;
 
+        // Step 5.1: 起终点为同一网格节点（或路径不可达）时，ST_MakeLine 无法产出有效 LineString，
+        // 必须在 saveRoute 访问 waypoints[0] 之前拦截，否则越界崩溃
+        if (routeGeojson == null || routeGeojson.isBlank()) {
+            throw new RuntimeException("起终点过近或不可达，无法生成航线");
+        }
+
         // Step 6: 计算途径点坐标（从 GeoJSON 中提取）
         List<double[]> waypoints = extractWaypointsFromGeojson(routeGeojson);
+        if (waypoints.size() < 2) {
+            throw new RuntimeException("起终点过近，航线节点不足（至少需要 2 个航点）");
+        }
 
         // Step 7: 计算预计飞行时间
         Integer estimatedSeconds = (int) Math.ceil(distanceM / FLIGHT_SPEED);

@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campus.twin.dto.*;
 import com.campus.twin.entity.*;
 import com.campus.twin.mapper.*;
-import com.campus.twin.service.DroneService;
 import com.campus.twin.service.OrderService;
 import com.campus.twin.service.RouteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +31,6 @@ public class OrderServiceImpl implements OrderService {
     private final DroneMapper droneMapper;
     private final FlightRouteMapper flightRouteMapper;
     private final SpatialQueryMapper spatialQueryMapper;
-    private final DroneService droneService;
     private final RouteService routeService;
     private final ObjectMapper objectMapper;
 
@@ -84,7 +82,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         DeliveryOrder order = new DeliveryOrder();
-        order.setOrderNo("DD" + LocalDateTime.now().format(ORDER_NO_FORMAT) + (int)(Math.random() * 1000));
+        order.setOrderNo("DD" + LocalDateTime.now().format(ORDER_NO_FORMAT)
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase());
         order.setRestaurantId(request.getRestaurantId());
         order.setDormitoryId(request.getDormitoryId());
         order.setReceiverName(request.getReceiverName() != null ? request.getReceiverName() : "匿名用户");
@@ -103,7 +102,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public DeliveryOrder assignDrone(Integer orderId, Integer droneId) {
-        DeliveryOrder order = orderMapper.selectById(orderId);
+        // 行级加锁：锁定订单行直至事务提交，防止自动补单/自动续派/手动分配并发下重复派单
+        DeliveryOrder order = orderMapper.selectByIdForUpdate(orderId);
         if (order == null) {
             throw new IllegalArgumentException("订单不存在: " + orderId);
         }
@@ -111,18 +111,15 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalStateException("订单状态不允许分配无人机: " + order.getStatus());
         }
 
-        // 自动调度或指定无人机
+        // 自动调度或指定无人机（均走 FOR UPDATE 加锁查询，锁持有至事务提交）
         Drone drone;
         if (droneId != null) {
-            drone = droneMapper.selectById(droneId);
+            drone = droneMapper.selectIdleByIdForUpdate(droneId);
             if (drone == null) {
-                throw new IllegalArgumentException("无人机不存在: " + droneId);
-            }
-            if (!"idle".equals(drone.getStatus())) {
-                throw new IllegalStateException("无人机不空闲: " + drone.getStatus());
+                throw new IllegalStateException("无人机不存在或不空闲: " + droneId);
             }
         } else {
-            drone = droneService.getAvailableDrone();
+            drone = droneMapper.selectAvailableForUpdate();
             if (drone == null) {
                 throw new IllegalStateException("没有可用的空闲无人机");
             }
@@ -494,6 +491,7 @@ public class OrderServiceImpl implements OrderService {
     /**
      * 从空间查询结果中提取质心坐标
      * 注意：SQL 中 ST_AsGeoJSON(ST_Centroid(geom)) 返回的是 JSON 字符串，不是 Map，需安全解析
+     * 解析失败时抛业务异常，禁止静默兜底到远离校园的默认坐标（否则航线会从错误位置起飞）
      */
     private double[] extractCentroid(Map<String, Object> spatialData) {
         if (spatialData != null && spatialData.get("centroid") != null) {
@@ -513,7 +511,6 @@ public class OrderServiceImpl implements OrderService {
                 log.warn("解析质心坐标失败: {}", e.getMessage());
             }
         }
-        // 兜底默认坐标
-        return new double[]{114.465, 38.04};
+        throw new IllegalArgumentException("建筑空间坐标缺失，无法规划航线");
     }
 }

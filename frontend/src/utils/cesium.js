@@ -512,11 +512,8 @@ export function loadRestaurantMarkers(viewer, restaurants, name) {
 export function loadDormitoryMarkers(viewer, dormitories, name) {
   const dataSource = new Cesium.CustomDataSource(name)
   for (const d of dormitories) {
-    // dormitories 数据来自空间查询，包含 geom GeoJSON
-    const coords = parseRouteGeojson(d.geom) // 复用解析函数获取质心
-    // 实际上 dormitory 是面，需要用质心，这里简化处理
-    if (!d.centroid && !coords.length) continue
     let lng, lat
+    // 1) 优先取接口返回的质心字段
     if (d.centroid) {
       try {
         const c = typeof d.centroid === 'string' ? JSON.parse(d.centroid) : d.centroid
@@ -526,8 +523,24 @@ export function loadDormitoryMarkers(viewer, dormitories, name) {
         continue
       }
     } else {
-      lng = coords[0][0]; lat = coords[0][1]
+      // 2) 无质心字段时，从 Polygon/MultiPolygon 的 GeoJSON 取外环坐标平均（近似质心）
+      let geo = null
+      try {
+        geo = typeof d.geom === 'string' ? JSON.parse(d.geom) : d.geom
+      } catch (e) {
+        geo = null
+      }
+      let ring = null
+      if (geo) {
+        if (geo.type === 'Polygon') ring = geo.coordinates?.[0]
+        else if (geo.type === 'MultiPolygon') ring = geo.coordinates?.[0]?.[0]
+        else if (geo.type === 'LineString') ring = geo.coordinates
+      }
+      if (!ring || !ring.length) continue
+      lng = ring.reduce((s, c) => s + c[0], 0) / ring.length
+      lat = ring.reduce((s, c) => s + c[1], 0) / ring.length
     }
+    if (lng == null || lat == null) continue
     dataSource.entities.add({
       id: 'dormitory-' + d.id,
       position: Cesium.Cartesian3.fromDegrees(lng, lat, 20),
@@ -733,6 +746,17 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
     }
   }
 
+  // 复位全局时钟到真实时间（动画结束后恢复 viewer 时钟的默认行为，避免残留动画时钟）
+  function resetClock() {
+    const now = Cesium.JulianDate.now()
+    viewer.clock.currentTime = now
+    viewer.clock.startTime = Cesium.JulianDate.addSeconds(now, -10, new Cesium.JulianDate())
+    viewer.clock.stopTime = Cesium.JulianDate.addDays(now, 1, new Cesium.JulianDate())
+    viewer.clock.clockRange = Cesium.ClockRange.UNBOUNDED
+    viewer.clock.multiplier = 1
+    viewer.clock.shouldAnimate = true
+  }
+
   const controller = {
     entity,
     totalSeconds,
@@ -797,6 +821,8 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
       viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
       lastPosition = null
       cameraReady = false
+      // 复位时钟到真实时间（动画开始会重新设置时钟区间，stop 时恢复默认状态）
+      resetClock()
     },
     setViewMode(mode) {
       viewMode = mode
