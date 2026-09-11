@@ -45,13 +45,13 @@
       <!-- 图例 -->
       <div class="cq-legend">
         <div class="cq-legend-item">
-          <span class="cq-dot" style="background:#2ECC40"></span>30s · 150m
+          <span class="cq-dot" style="background:#00E676"></span>30s · 150m
         </div>
         <div class="cq-legend-item">
-          <span class="cq-dot" style="background:#FF851B"></span>60s · 300m
+          <span class="cq-dot" style="background:#FFAB00"></span>60s · 300m
         </div>
         <div class="cq-legend-item">
-          <span class="cq-dot" style="background:#FF4136"></span>90s · 450m
+          <span class="cq-dot" style="background:#FF1744"></span>90s · 450m
         </div>
         <div class="cq-note">圆=时间参考线 · 高亮点=实际覆盖宿舍</div>
       </div>
@@ -67,7 +67,7 @@ import { useMapStore } from '@/stores/map'
 const mapStore = useMapStore()
 const collapsed = ref(false) // 默认展开
 
-const TIER_COLORS = { 30: '#2ECC40', 60: '#FF851B', 90: '#FF4136' }
+const TIER_COLORS = { 30: '#00E676', 60: '#FFAB00', 90: '#FF1744' }
 function tierColor(seconds) {
   return TIER_COLORS[seconds] || '#fff'
 }

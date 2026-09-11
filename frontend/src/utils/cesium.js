@@ -855,14 +855,17 @@ export const ORDER_STATUS_COLORS = {
  */
 export function loadCanteenBuffer(viewer, coverage, name) {
   const dataSource = new Cesium.CustomDataSource(name)
+  // 绿/黄/红（交通灯语义，差异最大）；内层圈后加（在上层，不被外层覆盖）
   const TIER_STYLE = [
-    { seconds: 30, color: Cesium.Color.fromCssColorString('#2ECC40') },
-    { seconds: 60, color: Cesium.Color.fromCssColorString('#FF851B') },
-    { seconds: 90, color: Cesium.Color.fromCssColorString('#FF4136') }
+    { seconds: 30, color: Cesium.Color.fromCssColorString('#00E676') },
+    { seconds: 60, color: Cesium.Color.fromCssColorString('#FFAB00') },
+    { seconds: 90, color: Cesium.Color.fromCssColorString('#FF1744') }
   ]
   for (const c of coverage || []) {
     if (c.center_lng == null || c.center_lat == null) continue
-    for (const tier of c.tiers || []) {
+    // 倒序：90s 先加（底层），30s 后加（上层），避免内层被外层填充覆盖
+    const tiersDesc = [...(c.tiers || [])].sort((a, b) => b.seconds - a.seconds)
+    for (const tier of tiersDesc) {
       const style = TIER_STYLE.find(t => t.seconds === tier.seconds) || TIER_STYLE[0]
       const r = tier.radius || 0
       dataSource.entities.add({
@@ -872,10 +875,10 @@ export function loadCanteenBuffer(viewer, coverage, name) {
           semiMajorAxis: r,
           semiMinorAxis: r,
           height: 2, // 贴地（不用 clampToGround，避免 GroundPrimitive 描边渲染问题）
-          material: style.color.withAlpha(0.15),
+          material: style.color.withAlpha(0.22),
           outline: true,
-          outlineColor: style.color.withAlpha(0.7),
-          outlineWidth: 1.5
+          outlineColor: style.color.withAlpha(1.0),
+          outlineWidth: 3
         },
         properties: {
           isCanteenTier: true,
