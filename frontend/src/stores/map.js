@@ -16,6 +16,7 @@ export const useMapStore = defineStore('map', () => {
   const measureController = ref(null)
   const canteenCoverage = ref(null)   // 食堂覆盖接口数据
   const coveragePopup = ref(null)     // 覆盖浮窗状态 {type, canteenId, canteenName, seconds?, dormitories?}
+  const canteenActiveSelection = ref(null) // 缓冲圈选中状态 null|{type:'all'}|{type:'canteen',canteenId}|{type:'tier',canteenId,seconds}
   const layers = reactive({
     baseImagery: true,
     teaching: true,
@@ -230,7 +231,7 @@ export const useMapStore = defineStore('map', () => {
     // 原有
     viewer, layers, dataSources, selectedBuilding, measureMode,
     measureSnapshot, measureController,
-    canteenCoverage, coveragePopup,
+    canteenCoverage, coveragePopup, canteenActiveSelection,
     campusCenter, campusBounds,
     initViewer, flyToCampus, setLayerVisible, selectBuilding, clearSelection,
     setMeasureMode, destroyViewer,

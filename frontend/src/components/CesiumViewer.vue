@@ -34,6 +34,43 @@ function clearDormHighlight(viewer) {
     dormHighlight = null
   }
 }
+
+/**
+ * 根据 canteenActiveSelection 设置缓冲圈显隐
+ * null=全隐, all=全显, canteen=该食堂3圈, tier=单圈
+ */
+function applyCanteenSelection(viewer, selection) {
+  const ds = mapStore.dataSources.canteenBuffer
+  if (!ds) return
+  const coverage = mapStore.canteenCoverage || []
+  // 先全部隐藏
+  for (const c of coverage) {
+    for (const t of c.tiers || []) {
+      const ent = ds.entities.getById(`canteen-tier-${c.canteen_id}-${t.seconds}`)
+      if (ent) ent.show = false
+    }
+  }
+  if (!selection) return
+  if (selection.type === 'all') {
+    for (const c of coverage) {
+      for (const t of c.tiers || []) {
+        const ent = ds.entities.getById(`canteen-tier-${c.canteen_id}-${t.seconds}`)
+        if (ent) ent.show = true
+      }
+    }
+  } else if (selection.type === 'canteen') {
+    const c = coverage.find(x => x.canteen_id === selection.canteenId)
+    if (c) {
+      for (const t of c.tiers || []) {
+        const ent = ds.entities.getById(`canteen-tier-${c.canteen_id}-${t.seconds}`)
+        if (ent) ent.show = true
+      }
+    }
+  } else if (selection.type === 'tier') {
+    const ent = ds.entities.getById(`canteen-tier-${selection.canteenId}-${selection.seconds}`)
+    if (ent) ent.show = true
+  }
+}
 let droneAnimation = null
 let droneSyncTimer = null
 let currentAnimatedDroneId = null
@@ -81,6 +118,11 @@ onMounted(async () => {
     if (v?.type === 'tier' && v.dormitories?.length) {
       dormHighlight = createDormitoryHighlight(viewer, v.dormitories)
     }
+  })
+
+  // 缓冲圈显隐联动：由 canteenActiveSelection 控制
+  watch(() => mapStore.canteenActiveSelection, (sel) => {
+    applyCanteenSelection(viewer, sel)
   })
 
   // 移除 Cesium 默认双击缩放（双击左键=拉远视角），避免测量双击时视角跳变
@@ -198,6 +240,8 @@ async function loadDeliveryData(viewer) {
     if (coverage?.length) {
       mapStore.canteenCoverage = coverage
       mapStore.dataSources.canteenBuffer = loadCanteenBuffer(viewer, coverage, '食堂缓冲区')
+      // 默认全隐藏，由 canteenActiveSelection 控制显隐
+      applyCanteenSelection(viewer, mapStore.canteenActiveSelection)
     }
   } catch (e) { console.warn('加载食堂缓冲区失败:', e) }
 }
@@ -383,6 +427,7 @@ function registerClickHandler(viewer) {
         const canteen = (mapStore.canteenCoverage || []).find(c => c.canteen_id === canteenId)
         const tier = canteen?.tiers?.find(t => t.seconds === seconds)
         if (tier) {
+          mapStore.canteenActiveSelection = { type: 'tier', canteenId, seconds }
           mapStore.coveragePopup = {
             type: 'tier',
             canteenId,
