@@ -5,6 +5,7 @@
       <span class="cq-title">食堂缓冲区覆盖范围查询</span>
       <div class="cq-header-actions">
         <span class="cq-show-all" @click.stop="showAll">全部显示</span>
+        <span class="cq-hide-all" @click.stop="hideAll">全部关闭</span>
         <el-icon class="cq-arrow" @click.stop="collapsed = !collapsed">
           <ArrowUp v-if="!collapsed" />
           <ArrowDown v-else />
@@ -103,6 +104,12 @@ function showAll() {
   mapStore.canteenActiveSelection = { type: 'all' }
   mapStore.coveragePopup = null
 }
+
+// 全部关闭：隐藏所有圈，清高亮
+function hideAll() {
+  mapStore.canteenActiveSelection = null
+  mapStore.coveragePopup = null
+}
 </script>
 
 <style scoped>
@@ -150,6 +157,18 @@ function showAll() {
 }
 .cq-show-all:hover {
   background: rgba(64, 158, 255, 0.2);
+  color: #fff;
+}
+.cq-hide-all {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.cq-hide-all:hover {
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
 }
 .cq-arrow {
