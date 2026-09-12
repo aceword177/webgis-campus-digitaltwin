@@ -38,5 +38,4 @@ Thumbs.db
 frontend/public/cesium/
 
 # 临时截图
-ui-screenshot.png
-ui-screenshot-2.png
+ui-screenshot*.png

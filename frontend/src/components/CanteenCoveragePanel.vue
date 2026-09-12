@@ -61,7 +61,7 @@ const fmtRadius = (v) => (v || 0) + 'm'
 .coverage-panel {
   position: absolute;
   left: 16px;
-  top: 120px;
+  bottom: 80px;
   z-index: 12;
   width: 260px;
   max-height: 60vh;
