@@ -38,6 +38,10 @@
         <div v-if="activePanel === 'stats'" class="panel-wrapper">
           <DeliveryStats />
         </div>
+        <!-- 食堂缓冲区分析面板 -->
+        <div v-if="activePanel === 'canteen'" class="panel-wrapper">
+          <CanteenCoverageQuery />
+        </div>
       </aside>
 
       <!-- 中间三维场景 -->
@@ -93,6 +97,7 @@ import BuildingPopup from '@/components/BuildingPopup.vue'
 import MeasureTool from '@/components/MeasureTool.vue'
 import MeasureInfo from '@/components/MeasureInfo.vue'
 import CanteenCoveragePanel from '@/components/CanteenCoveragePanel.vue'
+import CanteenCoverageQuery from '@/components/CanteenCoverageQuery.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)

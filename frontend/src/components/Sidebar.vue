@@ -19,7 +19,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMapStore } from '@/stores/map'
 import {
-  Menu, List, Monitor, Guide, DataAnalysis, Location
+  Menu, List, Monitor, Guide, DataAnalysis, PieChart
 } from '@element-plus/icons-vue'
 
 const mapStore = useMapStore()
@@ -30,7 +30,8 @@ const menuItems = [
   { name: 'order', label: '订单管理', icon: List },
   { name: 'drone', label: '无人机', icon: Monitor },
   { name: 'route', label: '航线规划', icon: Guide },
-  { name: 'stats', label: '配送统计', icon: DataAnalysis }
+  { name: 'stats', label: '配送统计', icon: DataAnalysis },
+  { name: 'canteen', label: '食堂缓冲区分析', icon: PieChart }
 ]
 
 function togglePanel(name) {
