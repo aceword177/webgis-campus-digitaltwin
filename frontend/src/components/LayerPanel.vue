@@ -95,6 +95,11 @@
         </div>
       </el-collapse-item>
 
+      <!-- 食堂覆盖查询 -->
+      <el-collapse-item title="食堂覆盖查询" name="canteen-query">
+        <CanteenCoverageQuery />
+      </el-collapse-item>
+
       <!-- 配送标记 -->
       <el-collapse-item title="配送标记" name="delivery-markers">
         <div class="layer-item">
@@ -121,12 +126,14 @@
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMapStore } from '@/stores/map'
+import CanteenCoverageQuery from '@/components/CanteenCoverageQuery.vue'
 
 const mapStore = useMapStore()
 const { layers } = storeToRefs(mapStore)
 const { setLayerVisible } = mapStore
 
-const activeNames = ref(['base', 'building', 'road', 'venue', 'school', 'drone', 'route', 'nofly', 'delivery-markers'])
+// 默认只展开底图、建筑、食堂覆盖查询，其余折叠以降低面板高度
+const activeNames = ref(['base', 'building', 'canteen-query'])
 </script>
 
 <style scoped>

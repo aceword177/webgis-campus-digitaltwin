@@ -55,9 +55,6 @@
         <!-- 食堂覆盖浮窗 -->
         <CanteenCoveragePanel />
 
-        <!-- 食堂缓冲区覆盖查询面板 -->
-        <CanteenCoverageQuery />
-
         <!-- 底部工具栏 -->
         <div class="bottom-toolbar">
           <MeasureTool />
@@ -96,7 +93,6 @@ import BuildingPopup from '@/components/BuildingPopup.vue'
 import MeasureTool from '@/components/MeasureTool.vue'
 import MeasureInfo from '@/components/MeasureInfo.vue'
 import CanteenCoveragePanel from '@/components/CanteenCoveragePanel.vue'
-import CanteenCoverageQuery from '@/components/CanteenCoverageQuery.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)
