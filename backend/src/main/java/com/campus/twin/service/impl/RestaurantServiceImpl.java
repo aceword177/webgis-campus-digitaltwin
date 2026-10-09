@@ -15,10 +15,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,6 +36,18 @@ public class RestaurantServiceImpl implements RestaurantService {
     private final ObjectMapper objectMapper;
 
     private static final double FLIGHT_SPEED = 5.0;
+
+    /** 可达区走廊半宽（米）：把实际航线扩成面时的缓冲宽度，仅为可视化 */
+    private static final double REACH_CORRIDOR_HALF_WIDTH_M = 25.0;
+
+    /** 覆盖结果缓存有效期：校园空间数据静态，无需每次请求重算 20 次 A* */
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
+
+    /** 覆盖结果缓存快照（不可变） */
+    private record CoverageCache(List<CanteenCoverageVO> data, LocalDateTime at) {
+    }
+
+    private volatile CoverageCache coverageCache;
 
     @Override
     public List<Restaurant> list() {
@@ -85,6 +101,20 @@ public class RestaurantServiceImpl implements RestaurantService {
 
     @Override
     public List<CanteenCoverageVO> getCoverage() {
+        // 覆盖分析要做 2 食堂 × 10 宿舍 ≈ 20 次 pgr_astar + 20 次最近节点 KNN，
+        // 而校园空间数据是静态的：结果缓存 CACHE_TTL，避免每次前端加载都全量重算。
+        CoverageCache cached = coverageCache;
+        if (cached != null && Duration.between(cached.at(), LocalDateTime.now()).compareTo(CACHE_TTL) < 0) {
+            return cached.data();
+        }
+        List<CanteenCoverageVO> computed = computeCoverage();
+        if (!computed.isEmpty()) {
+            coverageCache = new CoverageCache(computed, LocalDateTime.now());
+        }
+        return computed;
+    }
+
+    private List<CanteenCoverageVO> computeCoverage() {
         List<Restaurant> restaurants = restaurantMapper.selectList(null);
         List<Map<String, Object>> dorms = spatialQueryMapper.findDormitoryCentroids();
         List<CanteenCoverageVO> result = new ArrayList<>();
@@ -101,6 +131,8 @@ public class RestaurantServiceImpl implements RestaurantService {
                 continue;
             }
             List<DormitoryCoverageVO> all = new ArrayList<>();
+            // 宿舍 id → 该宿舍的实际航线 GeoJSON（用于后面按档并集成面）
+            Map<Integer, String> pathByDorm = new LinkedHashMap<>();
             for (Map<String, Object> dorm : dorms) {
                 Number dormId = (Number) dorm.get("id");
                 String dormName = (String) dorm.get("name");
@@ -133,17 +165,30 @@ public class RestaurantServiceImpl implements RestaurantService {
                         .lng(lng)
                         .lat(lat)
                         .build());
+                // 记录该宿舍的实际路径，供分档并集成面
+                Map<String, Object> pathGeo = navigationMapper.buildPathGeojson(nodeIdsStr);
+                if (pathGeo != null && pathGeo.get("path_geojson") != null) {
+                    pathByDorm.put(dormId.intValue(), (String) pathGeo.get("path_geojson"));
+                }
             }
             all.sort(Comparator.comparingInt(DormitoryCoverageVO::getSeconds));
             List<TierCoverageVO> tiers = new ArrayList<>();
             for (int sec : new int[]{30, 60, 90}) {
-                final int threshold = sec;
+                List<DormitoryCoverageVO> inTier = all.stream()
+                        .filter(d -> d.getSeconds() <= sec)
+                        .collect(Collectors.toList());
+                Double maxDist = inTier.stream()
+                        .map(DormitoryCoverageVO::getDistanceM)
+                        .filter(Objects::nonNull)
+                        .max(Double::compareTo)
+                        .orElse(0.0);
                 tiers.add(TierCoverageVO.builder()
                         .seconds(sec)
+                        // radius 保留仅为兼容旧前端；新前端请用 reachGeojson
                         .radius(sec * FLIGHT_SPEED)
-                        .dormitories(all.stream()
-                                .filter(d -> d.getSeconds() <= threshold)
-                                .collect(Collectors.toList()))
+                        .dormitories(inTier)
+                        .reachGeojson(buildTierReachGeojson(inTier, pathByDorm))
+                        .maxDistanceM(maxDormDistance(inTier))
                         .build());
             }
             result.add(CanteenCoverageVO.builder()
@@ -155,6 +200,43 @@ public class RestaurantServiceImpl implements RestaurantService {
                     .build());
         }
         return result;
+    }
+
+    /** 该档覆盖宿舍中的最远实走距离（与 maxDist 同源，抽出便于阅读） */
+    private Double maxDormDistance(List<DormitoryCoverageVO> inTier) {
+        return inTier.stream()
+                .map(DormitoryCoverageVO::getDistanceM)
+                .filter(Objects::nonNull)
+                .max(Double::compareTo)
+                .orElse(0.0);
+    }
+
+    /**
+     * 把该档覆盖宿舍的**实际航线**缓冲成面，返回 GeoJSON。
+     *
+     * <p>这样"地图上画出来的可达区"与"面板里列出的宿舍"来自同一份数据，
+     * 不会再出现圆与列表不一致的问题。缓冲宽度取走廊半宽，仅用于让线可见。
+     */
+    private String buildTierReachGeojson(List<DormitoryCoverageVO> inTier,
+                                         Map<Integer, String> pathByDorm) {
+        if (inTier.isEmpty()) {
+            return null;
+        }
+        List<String> paths = inTier.stream()
+                .map(d -> pathByDorm.get(d.getId()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (paths.isEmpty()) {
+            return null;
+        }
+        try {
+            Map<String, Object> row = navigationMapper.buildReachPolygon(paths, REACH_CORRIDOR_HALF_WIDTH_M);
+            return row != null ? (String) row.get("reach_geojson") : null;
+        } catch (Exception e) {
+            // 可达区面只是可视化增强，失败不应让整个覆盖接口挂掉
+            log.warn("生成可达区面失败（已降级为不返回几何）: {}", e.getMessage());
+            return null;
+        }
     }
 
     private Integer nearestWalkableNode(Double lng, Double lat) {

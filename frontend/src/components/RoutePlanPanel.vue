@@ -109,7 +109,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Close, Location, MapLocation, Guide, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getRestaurants, getRestaurantDetail } from '@/api/restaurant'
@@ -157,7 +157,7 @@ function startSelectEnd() {
     ElMessage.warning('请先选择起点')
     return
   }
-  mapStore.routePlanMode = 'selectingEnd'
+  mapStore.startSelectingEnd()
 }
 
 async function onRestaurantChange(id) {
@@ -206,15 +206,21 @@ async function planRoute() {
     ElMessage.warning('请选择起点和终点')
     return
   }
+  // 复用与模板一致的坐标有效性判断（isValidLng），避免 NaN/undefined 被 POST 到后端。
+  // 下拉选择宿舍楼时走的是"外环坐标平均"路径，几何异常时可能算出 NaN。
+  if (!isValidLng(start) || !isValidLng(end)) {
+    ElMessage.error('起点或终点坐标无效，请重新选择')
+    return
+  }
 
   planning.value = true
   try {
     // 注意：后端全局 SNAKE_CASE，请求体字段必须用下划线命名
     planResult.value = await apiPlanRoute({
-      start_lng: start.lng,
-      start_lat: start.lat,
-      end_lng: end.lng,
-      end_lat: end.lat,
+      start_lng: Number(start.lng),
+      start_lat: Number(start.lat),
+      end_lng: Number(end.lng),
+      end_lat: Number(end.lat),
       altitude: altitude.value
     })
     ElMessage.success('航线规划成功')
@@ -265,14 +271,6 @@ function close() {
   mapStore.closePanel()
   mapStore.cancelRoutePlanning()
 }
-
-// 监听地图拾取事件
-watch(routePlanMode, (val) => {
-  if (!val && planStartPoint.value && !planEndPoint.value) {
-    // 起点选完，自动进入终点选择
-    // mapStore.routePlanMode = 'selectingEnd'
-  }
-})
 </script>
 
 <style scoped>

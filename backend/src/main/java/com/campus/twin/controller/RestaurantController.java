@@ -1,5 +1,6 @@
 package com.campus.twin.controller;
 
+import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
 import com.campus.twin.dto.CanteenCoverageVO;
 import com.campus.twin.dto.RestaurantDetailVO;
@@ -40,7 +41,7 @@ public class RestaurantController {
     public Result<RestaurantDetailVO> getDetail(@PathVariable Integer id) {
         RestaurantDetailVO detail = restaurantService.getDetail(id);
         if (detail == null) {
-            return Result.error("餐厅不存在");
+            throw new ResourceNotFoundException("餐厅", id);
         }
         return Result.success(detail);
     }

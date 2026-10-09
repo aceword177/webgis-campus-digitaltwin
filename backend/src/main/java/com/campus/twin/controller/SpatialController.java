@@ -1,5 +1,6 @@
 package com.campus.twin.controller;
 
+import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
 import com.campus.twin.dto.LayerMeta;
 import com.campus.twin.service.SpatialService;
@@ -22,6 +23,9 @@ import java.util.Map;
 public class SpatialController {
 
     private final SpatialService spatialService;
+
+    /** 缓冲区查询半径上界（米）：校园尺度下 5km 已远超任何合理需求 */
+    private static final double MAX_BUFFER_RADIUS_M = 5000.0;
 
     @Operation(summary = "获取所有图层元数据")
     @GetMapping("/layers")
@@ -49,6 +53,14 @@ public class SpatialController {
             @Parameter(description = "经度", required = true) @RequestParam Double lng,
             @Parameter(description = "纬度", required = true) @RequestParam Double lat,
             @Parameter(description = "半径(米)", required = true) @RequestParam(defaultValue = "100") Double radius) {
+        // radius 语义是「米」，需要显式约束：
+        // 非正数无意义；上界防止一次查询把整表 geography 计算拉满
+        if (radius == null || radius <= 0) {
+            throw new IllegalArgumentException("缓冲半径必须为正数（单位：米）");
+        }
+        if (radius > MAX_BUFFER_RADIUS_M) {
+            throw new IllegalArgumentException("缓冲半径不能超过 " + (int) MAX_BUFFER_RADIUS_M + " 米");
+        }
         return Result.success(spatialService.bufferQuery(table, lng, lat, radius));
     }
 
@@ -66,7 +78,7 @@ public class SpatialController {
             @Parameter(description = "要素 ID", required = true) @PathVariable Integer id) {
         Map<String, Object> result = spatialService.getById(table, id);
         if (result == null) {
-            return Result.error("要素不存在");
+            throw new ResourceNotFoundException("要素", id);
         }
         return Result.success(result);
     }

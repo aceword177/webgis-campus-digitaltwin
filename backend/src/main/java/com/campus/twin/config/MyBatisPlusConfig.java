@@ -12,10 +12,22 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MyBatisPlusConfig {
 
+    /**
+     * 单页最大条数：兜底防滥用。
+     *
+     * <p>控制器侧已经对 {@code size} 做了钳制，这里再设一道全局上限，
+     * 覆盖所有走 MyBatis-Plus 分页的查询（含将来新增的、以及忘记钳制的接口），
+     * 避免 {@code ?size=1000000} 让服务端一次性物化大量行。
+     */
+    private static final long MAX_PAGE_LIMIT = 200L;
+
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.POSTGRE_SQL));
+        PaginationInnerInterceptor pagination =
+                new PaginationInnerInterceptor(DbType.POSTGRE_SQL);
+        pagination.setMaxLimit(MAX_PAGE_LIMIT);
+        interceptor.addInnerInterceptor(pagination);
         return interceptor;
     }
 }

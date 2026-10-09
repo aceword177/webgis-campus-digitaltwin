@@ -184,6 +184,9 @@ function statusLabel(status) {
 }
 
 function statusTagType(status) {
+  // el-tag 的 type 合法值为 primary / success / info / warning / danger
+  // （已核对 element-plus/es/components/tag/src/tag.mjs 的 values 定义）。
+  // 未命中状态一律回退 info，避免传入非法值触发 "Invalid prop: type" 告警。
   const map = { pending: 'warning', assigned: 'primary', delivering: 'success', delivered: 'info', cancelled: 'danger' }
   return map[status] || 'info'
 }

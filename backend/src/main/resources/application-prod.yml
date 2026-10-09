@@ -1,0 +1,58 @@
+# ============================================================
+# 生产环境配置：--spring.profiles.active=prod
+# ============================================================
+#
+# 与 local 的关键差异：
+#   1. 数据库连接全部由环境变量提供、**不给默认值**：
+#      未设置时占位符无法解析 → 应用启动失败，避免误用本地弱口令连生产库；
+#   2. 启动时**强制校验数据库可达**（spring.sql.init），连不上直接起不来，
+#      而不是"起得来但完全不可用"；
+#   3. Swagger 关闭，接口文档不对外暴露；
+#   4. 日志级别收紧，不打印业务 debug；
+#   5. 启动数据清理显式关闭（生产不应在启动时改写业务数据）。
+#
+# 必需的环境变量：
+#   DB_HOST  DB_PORT  DB_NAME  DB_USER  DB_PASSWORD
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_USER}
+    # 刻意不给默认值：未设置时占位符解析失败，启动即报错
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ===== fail-fast：启动时必须能连上数据库 =====
+  # 实测：仅靠 Hikari 的 initialization-fail-timeout 不够 —— Hikari 默认懒初始化，
+  # 启动阶段根本不取连接，于是即使 DB_HOST 没设（连接串里带着字面量 "${DB_HOST}"）
+  # 应用也照样"启动成功"，直到第一次真正查询才抛 UnknownHostException。
+  # 对生产而言这种状态很危险：健康检查可能通过、定时任务静默失败。
+  #
+  # 这里让 Spring 启动时执行一次 schema 脚本，从而强制取一条连接；
+  # 脚本内容是空的（只做一句 SELECT 1），不建表、不改数据。
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+      schema-locations: classpath:db/validate-connection.sql
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+campus:
+  cleanup:
+    enabled: false
+
+logging:
+  level:
+    com.campus.twin: info
+    org.springframework.web: warn

@@ -23,6 +23,40 @@ export const VENUE_COLORS = {
 }
 
 /**
+ * 世界坐标 → 屏幕像素坐标（浮窗/标签定位用）。
+ *
+ * ⚠️ 必须走这个兼容封装，不要直接调 `Cesium.SceneTransforms.*`。
+ *
+ * Cesium 1.121 前后把 `SceneTransforms.wgs84ToWindowCoordinates(scene, position)`
+ * 改名为 `SceneTransforms.worldToWindowCoordinates(scene, position, result)`。
+ * 本项目 `package.json` 曾写 `^1.114.0`，实际被解析安装成 1.145.0，
+ * 于是旧调用变成 `TypeError: ... is not a function`。
+ * 浮窗每帧定位都调它，表现为「点击后有数据但弹窗不出现」——
+ * 因为异常发生在 postRender 里，v-if 的真实位置永远算不出来。
+ *
+ * 这里保留一条降级链：新名 → 旧名 → null，避免以后升版再次踩同一个坑。
+ *
+ * @param {Cesium.Scene} scene
+ * @param {Cesium.Cartesian3} position 世界坐标
+ * @returns {Cesium.Cartesian2|null} 屏幕坐标；位置在视锥外或 API 不可用时返回 null
+ */
+export function worldToWindowCoordinates(scene, position) {
+  if (!scene || !position) return null
+  const transforms = Cesium.SceneTransforms
+  if (!transforms) return null
+
+  // 新 API（Cesium ≥ 1.121）
+  if (typeof transforms.worldToWindowCoordinates === 'function') {
+    return transforms.worldToWindowCoordinates(scene, position) ?? null
+  }
+  // 旧 API（Cesium < 1.121）
+  if (typeof transforms.wgs84ToWindowCoordinates === 'function') {
+    return transforms.wgs84ToWindowCoordinates(scene, position) ?? null
+  }
+  return null
+}
+
+/**
  * 相机 flyTo 定位到目标，保证目标位于视野中心
  *
  * 背景：camera.flyTo({ destination }) 的 destination 是"相机位置"而非目标位置。
@@ -68,12 +102,20 @@ export function toGeoJsonFeatureCollection(features) {
 }
 
 /**
- * 加载建筑 GeoJSON 并拉伸为白模
- * @param {Cesium.Viewer} viewer - Cesium Viewer
- * @param {Array} features - 后端返回的建筑要素列表
- * @param {string} buildingType - 建筑类型 teaching/dormitory/other
- * @param {string} name - DataSource 名称
- * @returns {Promise<Cesium.GeoJsonDataSource>}
+ * 加载建筑 GeoJSON 并拉伸为白模。
+ *
+ * ⚠️ `clampToGround` 必须为 false（默认值）。
+ *
+ * 这里要的是**拉伸体块**：`height=0` + `extrudedHeight` 让多边形从地面立起来。
+ * 而 `clampToGround: true` 是请求"把多边形贴到地形表面"——两者语义互斥：
+ * 贴地多边形走 GroundPrimitive 路径，不支持 height/extrudedHeight，
+ * Cesium 只能反复重建几何去协调这对矛盾属性。既白费开销，又是几何构建
+ * 任务最密集的地方（DataCloneError 就是在几何任务里炸出来的）。
+ *
+ * 同理 `outline: true` 也不能用：它只对**贴地**多边形有效，
+ * 拉伸体块需要另外用 polyline 勾边（见下方）。
+ *
+ * 校园范围小且平坦，用 `height: 0` 当作地面高度与 clampToGround 视觉一致。
  */
 export async function loadBuildings(viewer, features, buildingType, name) {
   const geoJson = toGeoJsonFeatureCollection(features)
@@ -81,7 +123,7 @@ export async function loadBuildings(viewer, features, buildingType, name) {
     stroke: Cesium.Color.WHITE.withAlpha(0.3),
     strokeWidth: 1,
     fill: BUILDING_COLORS[buildingType] || BUILDING_COLORS.other,
-    clampToGround: true
+    clampToGround: false
   })
 
   // 拉伸建筑为白模
@@ -91,17 +133,93 @@ export async function loadBuildings(viewer, features, buildingType, name) {
     const extrudedHeight = height * FLOOR_HEIGHT
     entity.polygon.extrudedHeight = extrudedHeight
     entity.polygon.height = 0
-    entity.polygon.outline = true
-    entity.polygon.outlineColor = Cesium.Color.WHITE.withAlpha(0.4)
+    // 拉伸体块没有轮廓线，用贴地 polyline 勾出建筑边界，视觉上更清晰
+    entity.polygon.outline = false
+    entity._outlineColor = Cesium.Color.WHITE.withAlpha(0.4)
+
     // 存储建筑类型，用于点击判断
     entity.billboard = undefined
     entity._buildingType = buildingType
     entity._tableName = getTableNameByType(buildingType)
+
+    // 预存形心经纬度：点击时若射线求交失败（无地形/无深度纹理），
+    // 用形心兜底反查 pointQuery，保证一定能命中建筑自身轮廓
+    const centroid = getFeatureCentroid(entity.properties?.geom?.getValue())
+    if (centroid) {
+      entity._centroidLng = centroid[0]
+      entity._centroidLat = centroid[1]
+    }
   }
 
   dataSource.name = name
   viewer.dataSources.add(dataSource)
+
+  // 建筑轮廓描边：拉伸体块用独立 polyline 勾边（outline 属性对非贴地多边形无效）。
+  // add() 是异步的，必须 await 完再返回，调用方才能按名字把它从集合里取回
+  await addBuildingOutlines(viewer, features, buildingType)
+
   return dataSource
+}
+
+/**
+ * 为建筑外环添加贴地描边线，让拉伸白模的边界更清晰。
+ *
+ * 背景：`polygon.outline` 只对贴地多边形生效，本项目建筑是拉伸体块，
+ * 因此必须单独画线。见 loadBuildings 的注释。
+ *
+ * ⚠️ 返回 Promise：`DataSourceCollection.add()` 是**异步**的，
+ * 调用后对象不会立刻进入集合，此时 `getByName()` 查不到。
+ * 调用方需要 await 之后才能按名字取回并登记（见 CesiumViewer#loadBuildingLayer）。
+ *
+ * @returns {Promise<Cesium.CustomDataSource>}
+ */
+async function addBuildingOutlines(viewer, features, buildingType) {
+  const dataSource = new Cesium.CustomDataSource('building-outlines-' + buildingType)
+
+  for (const feature of features || []) {
+    let geom = feature?.geom
+    if (typeof geom === 'string') {
+      try { geom = JSON.parse(geom) } catch (e) { continue }
+    }
+    if (!geom) continue
+
+    // 只取外环（校园建筑均无孔洞）
+    const rings = []
+    if (geom.type === 'Polygon') {
+      if (geom.coordinates?.[0]) rings.push(geom.coordinates[0])
+    } else if (geom.type === 'MultiPolygon') {
+      for (const poly of geom.coordinates || []) {
+        if (poly?.[0]) rings.push(poly[0])
+      }
+    }
+
+    for (const ring of rings) {
+      if (!ring || ring.length < 3) continue
+      dataSource.entities.add({
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray(ring.flat()),
+          width: 1.5,
+          material: Cesium.Color.WHITE.withAlpha(0.4),
+          clampToGround: true
+        }
+      })
+    }
+  }
+
+  // ⚠️ 必须 await：DataSourceCollection.add() 是异步的，不 await 的话
+  // 对象还没进入集合，调用方紧接着 getByName() 会查到空数组
+  await viewer.dataSources.add(dataSource)
+  return dataSource
+}
+
+/**
+ * 描边图层 key -> 所属建筑图层 key 的映射。
+ * stores/map.js#setLayerVisible 用它把建筑图层的显隐同步给描边。
+ */
+export const OUTLINE_LAYER_OF = {
+  'outline-teaching': 'teaching',
+  'outline-dormitory': 'dormitory',
+  'outline-other': 'other'
 }
 
 /**
@@ -222,10 +340,51 @@ export function loadDevices(viewer, devices, name) {
 }
 
 /**
+ * 取 GeoJSON 几何的「粗略形心」（所有坐标的算术平均，单位：度）。
+ *
+ * 只用于点击建筑的兜底定位：射线求交失败时拿它反查 pointQuery，
+ * 算术平均点对凸多边形校园建筑一定落在轮廓内，精度足够。
+ * 不追求几何精确形心（不做带孔环/球面面积加权）。
+ *
+ * @param {string|Object} geom - GeoJSON 几何字符串或对象
+ * @returns {[number, number]|null} [lng, lat]，无法解析时返回 null
+ */
+export function getFeatureCentroid(geom) {
+  let parsed = geom
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed) } catch (e) { return null }
+  }
+  if (!parsed || !parsed.type) return null
+
+  // 支持 Polygon / MultiPolygon（校园建筑数据只有这两种）
+  let outerRings = []
+  if (parsed.type === 'Polygon') {
+    outerRings = parsed.coordinates?.[0] ? [parsed.coordinates[0]] : []
+  } else if (parsed.type === 'MultiPolygon') {
+    outerRings = (parsed.coordinates || []).map(poly => poly?.[0]).filter(Boolean)
+  }
+  if (!outerRings.length) return null
+
+  let sumLng = 0
+  let sumLat = 0
+  let count = 0
+  for (const ring of outerRings) {
+    for (const coord of ring) {
+      // 环的首尾点重复，一并计入只会带来可忽略的权重偏差，无需去重
+      if (!Array.isArray(coord) || coord.length < 2) continue
+      sumLng += coord[0]
+      sumLat += coord[1]
+      count++
+    }
+  }
+  if (!count) return null
+  return [sumLng / count, sumLat / count]
+}
+
+/**
  * 根据建筑类型获取表名
  */
-export function getTableNameByType(type) {
-  const map = {
+export function getTableNameByType(type) {  const map = {
     teaching: 'teaching_building',
     dormitory: 'dormitory',
     other: 'other_buildings'
@@ -293,8 +452,14 @@ export function getDroneColor(status) {
 /**
  * 创建无人机四旋翼图标（Canvas 绘制，全白剪影，供 billboard.color 染色）
  * 染色后整体呈状态色：绿色=空闲 / 金色=配送中 / 蓝色=充电中 / 红色=电量不足或维护
+ *
+ * 结果按模块级缓存：图标是纯静态图形，但 createDroneEntity 每次新增无人机都会调用，
+ * 原实现每次重新绘制 + toDataURL（同步、开销不小），无人机数量一多就是无谓损耗。
  */
+let cachedDroneIcon = null
 export function createDroneIcon() {
+  if (cachedDroneIcon) return cachedDroneIcon
+
   const canvas = document.createElement('canvas')
   canvas.width = 64; canvas.height = 64
   const ctx = canvas.getContext('2d')
@@ -317,7 +482,8 @@ export function createDroneIcon() {
   // 机头方向标记（上方的突出小圆，帮助识别朝向）
   ctx.beginPath(); ctx.arc(32, 8, 4, 0, Math.PI * 2); ctx.fill()
 
-  return canvas.toDataURL()
+  cachedDroneIcon = canvas.toDataURL()
+  return cachedDroneIcon
 }
 
 /**
@@ -559,8 +725,11 @@ export function loadDormitoryMarkers(viewer, dormitories, name) {
 
 /**
  * 创建餐厅图标（Canvas 绘制）
+ * 结果模块级缓存：静态图形无需每次加载餐厅标记时重绘。
  */
+let cachedRestaurantIcon = null
 function createRestaurantIcon() {
+  if (cachedRestaurantIcon) return cachedRestaurantIcon
   const canvas = document.createElement('canvas')
   canvas.width = 64; canvas.height = 64
   const ctx = canvas.getContext('2d')
@@ -570,13 +739,17 @@ function createRestaurantIcon() {
   ctx.font = 'bold 28px sans-serif'
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText('餐', 32, 34)
-  return canvas.toDataURL()
+  cachedRestaurantIcon = canvas.toDataURL()
+  return cachedRestaurantIcon
 }
 
 /**
  * 创建宿舍楼图标（Canvas 绘制）
+ * 结果模块级缓存：静态图形无需每次加载宿舍标记时重绘。
  */
+let cachedDormitoryIcon = null
 function createDormitoryIcon() {
+  if (cachedDormitoryIcon) return cachedDormitoryIcon
   const canvas = document.createElement('canvas')
   canvas.width = 64; canvas.height = 64
   const ctx = canvas.getContext('2d')
@@ -586,7 +759,8 @@ function createDormitoryIcon() {
   ctx.font = 'bold 24px sans-serif'
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText('宿', 32, 34)
-  return canvas.toDataURL()
+  cachedDormitoryIcon = canvas.toDataURL()
+  return cachedDormitoryIcon
 }
 
 /**
@@ -876,46 +1050,113 @@ export const ORDER_STATUS_COLORS = {
 }
 
 /**
- * 加载食堂缓冲区（3 层同心圆形参考圈：30s/60s/90s）
- * 圈=时间参考线（直线半径），实际覆盖宿舍由点击时高亮表达
+ * 加载食堂覆盖"可达区"
+ *
+ * 为什么用面而不是圆：
+ *   后端的分档依据是 A* 的**实走距离**（沿 15m 导航栅格、会绕行限飞区），
+ *   而圆代表直线半径。两者数学上不等价，用圆会出现
+ *   "圆里不含某宿舍，但面板列表里列了它"的自相矛盾。
+ *   现在改为渲染后端下发的 reach_geojson（由该档实际航线缓冲并集而成），
+ *   图上的面与列表里的宿舍严格自洽。
+ *
+ * 兼容：若后端未返回 reach_geojson（旧接口/生成失败），回退为原来的
+ * 直线半径椭圆，并保留"示意"语义，避免直接没有图形。
  */
 export function loadCanteenBuffer(viewer, coverage, name) {
   const dataSource = new Cesium.CustomDataSource(name)
-  // 绿/黄/红（交通灯语义，差异最大）；内层圈后加（在上层，不被外层覆盖）
+  // 绿/黄/红（交通灯语义，差异最大）；内层档后加（在上层，不被外层覆盖）
   const TIER_STYLE = [
     { seconds: 30, color: Cesium.Color.fromCssColorString('#00E676') },
     { seconds: 60, color: Cesium.Color.fromCssColorString('#FFAB00') },
     { seconds: 90, color: Cesium.Color.fromCssColorString('#FF1744') }
   ]
+
   for (const c of coverage || []) {
     if (c.center_lng == null || c.center_lat == null) continue
     // 倒序：90s 先加（底层），30s 后加（上层），避免内层被外层填充覆盖
     const tiersDesc = [...(c.tiers || [])].sort((a, b) => b.seconds - a.seconds)
     for (const tier of tiersDesc) {
       const style = TIER_STYLE.find(t => t.seconds === tier.seconds) || TIER_STYLE[0]
+      const entityId = `canteen-tier-${c.canteen_id}-${tier.seconds}`
+      const props = {
+        isCanteenTier: true,
+        canteenId: c.canteen_id,
+        seconds: tier.seconds
+      }
+
+      // 优先：实际可达区面
+      let reach = null
+      if (tier.reach_geojson) {
+        try {
+          reach = typeof tier.reach_geojson === 'string'
+            ? JSON.parse(tier.reach_geojson)
+            : tier.reach_geojson
+        } catch (e) {
+          console.warn('解析可达区几何失败，回退为直线示意圈:', c.canteen_id, tier.seconds, e)
+        }
+      }
+      if (reach) {
+        const rings = extractRings(reach)
+        if (rings.length) {
+          // 用 hierarchy 直接给多边形（支持带洞：第一个环为外环，其余为洞）
+          const hierarchy = new Cesium.PolygonHierarchy(
+            Cesium.Cartesian3.fromDegreesArray(rings[0].flat()),
+            rings.slice(1).map(r => new Cesium.PolygonHierarchy(
+              Cesium.Cartesian3.fromDegreesArray(r.flat())
+            ))
+          )
+          dataSource.entities.add({
+            id: entityId,
+            polygon: {
+              hierarchy,
+              height: 2, // 贴地（不用 clampToGround，避免 GroundPrimitive 描边渲染问题）
+              material: style.color.withAlpha(0.22),
+              outline: true,
+              outlineColor: style.color.withAlpha(1.0),
+              outlineWidth: 3
+            },
+            properties: { ...props, geometryKind: 'reachArea' }
+          })
+          continue
+        }
+      }
+
+      // 回退：直线半径示意圈（几何缺失时至少能看到档位范围）
       const r = tier.radius || 0
       dataSource.entities.add({
-        id: `canteen-tier-${c.canteen_id}-${tier.seconds}`,
+        id: entityId,
         position: Cesium.Cartesian3.fromDegrees(c.center_lng, c.center_lat, 0),
         ellipse: {
           semiMajorAxis: r,
           semiMinorAxis: r,
-          height: 2, // 贴地（不用 clampToGround，避免 GroundPrimitive 描边渲染问题）
-          material: style.color.withAlpha(0.22),
+          height: 2,
+          material: style.color.withAlpha(0.18),
           outline: true,
-          outlineColor: style.color.withAlpha(1.0),
-          outlineWidth: 3
+          outlineColor: style.color.withAlpha(0.8),
+          outlineWidth: 2
         },
-        properties: {
-          isCanteenTier: true,
-          canteenId: c.canteen_id,
-          seconds: tier.seconds
-        }
+        properties: { ...props, geometryKind: 'radiusFallback' }
       })
     }
   }
   viewer.dataSources.add(dataSource)
   return dataSource
+}
+
+/** 从 GeoJSON Polygon/MultiPolygon 中提取外环（每个面取第 0 个环） */
+function extractRings(geom) {
+  const rings = []
+  if (!geom) return rings
+  if (geom.type === 'Polygon') {
+    if (geom.coordinates?.[0]) rings.push(geom.coordinates[0])
+  } else if (geom.type === 'MultiPolygon') {
+    for (const poly of geom.coordinates || []) {
+      if (poly?.[0]) rings.push(poly[0])
+    }
+  } else if (geom.type === 'GeometryCollection') {
+    for (const g of geom.geometries || []) rings.push(...extractRings(g))
+  }
+  return rings
 }
 
 /**

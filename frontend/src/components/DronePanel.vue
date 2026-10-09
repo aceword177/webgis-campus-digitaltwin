@@ -79,7 +79,6 @@ import { ElMessage } from 'element-plus'
 import { getDrones } from '@/api/drone'
 import { useMapStore } from '@/stores/map'
 import { flyToTarget } from '@/utils/cesium'
-import * as Cesium from 'cesium'
 
 const mapStore = useMapStore()
 

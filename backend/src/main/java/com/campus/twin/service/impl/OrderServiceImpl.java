@@ -3,9 +3,11 @@ package com.campus.twin.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.campus.twin.common.GeoJsonSupport;
 import com.campus.twin.dto.*;
 import com.campus.twin.entity.*;
 import com.campus.twin.mapper.*;
+import com.campus.twin.service.CanteenLocator;
 import com.campus.twin.service.OrderService;
 import com.campus.twin.service.RouteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +34,7 @@ public class OrderServiceImpl implements OrderService {
     private final FlightRouteMapper flightRouteMapper;
     private final SpatialQueryMapper spatialQueryMapper;
     private final RouteService routeService;
+    private final CanteenLocator canteenLocator;
     private final ObjectMapper objectMapper;
 
     private static final DateTimeFormatter ORDER_NO_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
@@ -39,23 +42,73 @@ public class OrderServiceImpl implements OrderService {
     /** 确认送达时，无人机与收货地点的判定距离阈值（米） */
     private static final double ARRIVE_THRESHOLD_M = 30.0;
 
-    /** 充电落点散布半径（米）：无人机在食堂周边随机散布，避免重叠在食堂中心 */
-    private static final double CHARGE_SPREAD_M = 5.0;
-
-    private static final Random RANDOM = new Random();
-
     @Override
-    public List<DeliveryOrder> list(String status, Integer page, Integer size) {
+    public List<OrderListVO> list(String status, Integer page, Integer size) {
         LambdaQueryWrapper<DeliveryOrder> wrapper = new LambdaQueryWrapper<>();
         if (status != null && !status.isBlank()) {
             wrapper.eq(DeliveryOrder::getStatus, status);
         }
         wrapper.orderByDesc(DeliveryOrder::getCreateTime);
+
+        List<DeliveryOrder> rows;
         if (page != null && size != null) {
             Page<DeliveryOrder> pageResult = new Page<>(page, size);
-            return orderMapper.selectPage(pageResult, wrapper).getRecords();
+            rows = orderMapper.selectPage(pageResult, wrapper).getRecords();
+        } else {
+            rows = orderMapper.selectList(wrapper);
         }
-        return orderMapper.selectList(wrapper);
+        return toListVo(rows);
+    }
+
+    /**
+     * 批量把订单实体映射为带关联名称的列表 VO。
+     *
+     * <p>用两次 selectBatchIds 预取餐厅与宿舍名称，避免在循环里逐条查库（N+1）。
+     */
+    private List<OrderListVO> toListVo(List<DeliveryOrder> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Integer> restaurantIds = rows.stream()
+                .map(DeliveryOrder::getRestaurantId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<Integer> dormitoryIds = rows.stream()
+                .map(DeliveryOrder::getDormitoryId).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Integer, String> restaurantNames = restaurantIds.isEmpty()
+                ? Map.of()
+                : restaurantMapper.selectBatchIds(restaurantIds).stream()
+                        .filter(r -> r.getId() != null)
+                        .collect(Collectors.toMap(Restaurant::getId, Restaurant::getName, (a, b) -> a));
+        Map<Integer, String> dormitoryNames = dormitoryIds.isEmpty()
+                ? Map.of()
+                : dormitoryMapper.selectBatchIds(dormitoryIds).stream()
+                        .filter(d -> d.getId() != null)
+                        .collect(Collectors.toMap(Dormitory::getId, Dormitory::getName, (a, b) -> a));
+
+        return rows.stream().map(o -> OrderListVO.builder()
+                .id(o.getId())
+                .orderNo(o.getOrderNo())
+                .restaurantId(o.getRestaurantId())
+                .restaurantName(o.getRestaurantId() != null
+                        ? restaurantNames.getOrDefault(o.getRestaurantId(), "未知餐厅") : "未知餐厅")
+                .dormitoryId(o.getDormitoryId())
+                .dormitoryName(o.getDormitoryId() != null
+                        ? dormitoryNames.getOrDefault(o.getDormitoryId(), "未知宿舍楼") : "未知宿舍楼")
+                .receiverName(o.getReceiverName())
+                .receiverPhone(o.getReceiverPhone())
+                .itemsText(o.getItemsText())
+                .amount(o.getAmount())
+                .status(o.getStatus())
+                .statusLabel(getStatusLabel(o.getStatus()))
+                .droneId(o.getDroneId())
+                .createTime(o.getCreateTime())
+                .assignTime(o.getAssignTime())
+                .deliverTime(o.getDeliverTime())
+                .remark(o.getRemark())
+                .build()).collect(Collectors.toList());
     }
 
     @Override
@@ -278,55 +331,12 @@ public class OrderServiceImpl implements OrderService {
                 drone.getDroneNo(), drone.getBatteryPct(), spot[0], spot[1]);
     }
 
-    /** 计算无人机应停靠的食堂充电/待命落点（最近食堂质心周边随机散布 5m） */
+    /** 计算无人机应停靠的食堂充电/待命落点（最近食堂质心周边的确定性散点） */
     private double[] canteenSpotFor(Drone drone) {
         double lng = drone.getCurrentLng() != null ? drone.getCurrentLng().doubleValue() : 0.0;
         double lat = drone.getCurrentLat() != null ? drone.getCurrentLat().doubleValue() : 0.0;
-        double[] canteen = findNearestCanteen(lng, lat);
-        // 充电/待命落点在食堂周边随机散布（5米内），避免所有无人机重叠在食堂中心
-        return randomSpreadAround(canteen[0], canteen[1]);
-    }
-
-    /** 在指定点周边 CHARGE_SPREAD_M 米内随机散布（用于充电落点） */
-    private double[] randomSpreadAround(double lng, double lat) {
-        double angle = RANDOM.nextDouble() * 2 * Math.PI;
-        double dist = RANDOM.nextDouble() * CHARGE_SPREAD_M;
-        double dLat = dist * Math.cos(angle) / 111320.0;
-        double dLng = dist * Math.sin(angle) / (111320.0 * Math.cos(Math.toRadians(lat)));
-        return new double[]{lng + dLng, lat + dLat};
-    }
-
-    /** 找离无人机最近的食堂（餐厅所在建筑的质心） */
-    private double[] findNearestCanteen(double lng, double lat) {
-        List<Restaurant> restaurants = restaurantMapper.selectList(null);
-        double[] best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (Restaurant r : restaurants) {
-            try {
-                Map<String, Object> building = spatialQueryMapper.selectById("other_buildings", r.getBuildingId());
-                double[] c = extractCentroid(building);
-                double d = haversineDistance(lng, lat, c[0], c[1]);
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = c;
-                }
-            } catch (Exception e) {
-                log.warn("获取食堂 {} 坐标失败: {}", r.getName(), e.getMessage());
-            }
-        }
-        // 兜底：食堂1附近坐标
-        return best != null ? best : new double[]{114.470404, 37.983182};
-    }
-
-    /** 简易经纬度距离计算（米） */
-    private double haversineDistance(double lng1, double lat1, double lng2, double lat2) {
-        double R = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        // 落点由 CanteenLocator 统一计算（同一无人机恒定落点，避免坐标反复抖动）
+        return canteenLocator.parkingSpotFor(drone.getId(), lng, lat);
     }
 
     /** 建筑高度字段(层数)转米（每层 3.5m），字段为空或非法时兜底 6 层=21m */
@@ -375,50 +385,39 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public DeliveryStatsVO getDeliveryStats() {
-        List<DeliveryOrder> all = orderMapper.selectList(null);
-        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
-
-        Map<String, Integer> statusCount = new HashMap<>();
+        // 聚合全部下推到 SQL：此前是 orderMapper.selectList(null) 把整张订单表读进内存再遍历。
+        // 订单表只增不删，那种写法会随数据量线性劣化（现已 6000+ 行，且只会更多）。
+        Map<String, Integer> statusCount = new LinkedHashMap<>();
         int todayOrders = 0;
         int todayDelivered = 0;
         int todayDelivering = 0;
         int todayPending = 0;
-        double totalDeliveryMinutes = 0;
-        int deliveredCount = 0;
 
-        Map<String, Integer> ordersByRestaurant = new HashMap<>();
-
-        // 批量预取餐厅信息，避免循环内 N+1 查询
-        Set<Integer> restaurantIds = all.stream()
-                .map(DeliveryOrder::getRestaurantId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Integer, Restaurant> restaurantMap = restaurantIds.isEmpty() ? Collections.emptyMap()
-                : restaurantMapper.selectBatchIds(restaurantIds).stream()
-                        .collect(Collectors.toMap(Restaurant::getId, r -> r));
-
-        for (DeliveryOrder o : all) {
-            statusCount.merge(o.getStatus(), 1, Integer::sum);
-
-            boolean isToday = o.getCreateTime() != null && !o.getCreateTime().isBefore(todayStart);
-            if (isToday) {
-                todayOrders++;
-                switch (o.getStatus()) {
-                    case "delivered" -> todayDelivered++;
-                    case "delivering" -> todayDelivering++;
-                    case "pending" -> todayPending++;
-                }
+        for (Map<String, Object> row : orderMapper.selectStatusCounts()) {
+            String status = (String) row.get("status");
+            if (status == null) {
+                continue;
             }
+            int total = toInt(row.get("status_count"));
+            int today = toInt(row.get("today_count"));
 
-            if ("delivered".equals(o.getStatus()) && o.getCreateTime() != null && o.getDeliverTime() != null) {
-                double minutes = java.time.Duration.between(o.getCreateTime(), o.getDeliverTime()).toMillis() / 60000.0;
-                totalDeliveryMinutes += minutes;
-                deliveredCount++;
+            statusCount.put(status, total);
+            todayOrders += today;
+            switch (status) {
+                case "delivered" -> todayDelivered += today;
+                case "delivering" -> todayDelivering += today;
+                case "pending" -> todayPending += today;
+                default -> { /* 其余状态不计入今日分项，但仍保留在 statusCount 中 */ }
             }
+        }
 
-            Restaurant r = restaurantMap.get(o.getRestaurantId());
-            if (r != null) {
-                ordersByRestaurant.merge(r.getName(), 1, Integer::sum);
+        Double avgMinutes = orderMapper.selectAvgDeliveryMinutes();
+
+        Map<String, Integer> ordersByRestaurant = new LinkedHashMap<>();
+        for (Map<String, Object> row : orderMapper.selectOrderCountByRestaurant()) {
+            Object name = row.get("restaurant_name");
+            if (name != null) {
+                ordersByRestaurant.put(String.valueOf(name), toInt(row.get("order_count")));
             }
         }
 
@@ -427,11 +426,18 @@ public class OrderServiceImpl implements OrderService {
                 .todayDelivered(todayDelivered)
                 .todayDelivering(todayDelivering)
                 .todayPending(todayPending)
-                .deliveryRate(todayOrders > 0 ? Math.round(todayDelivered * 100.0 / todayOrders) / 100.0 : 0.0)
-                .avgDeliveryMinutes(deliveredCount > 0 ? Math.round(totalDeliveryMinutes / deliveredCount * 10.0) / 10.0 : 0.0)
+                .deliveryRate(todayOrders > 0
+                        ? Math.round(todayDelivered * 100.0 / todayOrders) / 100.0 : 0.0)
+                .avgDeliveryMinutes(avgMinutes != null
+                        ? Math.round(avgMinutes * 10.0) / 10.0 : 0.0)
                 .orderStatusCount(statusCount)
                 .ordersByRestaurant(ordersByRestaurant)
                 .build();
+    }
+
+    /** 汇总行取值：COUNT/AVG 在不同驱动下可能返回 Integer/Long/BigDecimal，统一收敛 */
+    private int toInt(Object v) {
+        return v instanceof Number n ? n.intValue() : 0;
     }
 
     /**
@@ -489,27 +495,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * 从空间查询结果中提取质心坐标
-     * 注意：SQL 中 ST_AsGeoJSON(ST_Centroid(geom)) 返回的是 JSON 字符串，不是 Map，需安全解析
-     * 解析失败时抛业务异常，禁止静默兜底到远离校园的默认坐标（否则航线会从错误位置起飞）
+     * 从空间查询结果中提取质心坐标。
+     *
+     * <p>解析统一委托 {@link GeoJsonSupport#parseCentroid}，消除此前各服务各写一套
+     * （`(String)` 强转 / `instanceof Map` / 手工 Jackson）的不一致写法。
+     *
+     * <p>本方法**保持"失败即抛业务异常"的语义**：派单必须拿到真实建筑坐标，
+     * 静默兜底到校园外的默认坐标会让航线从错误位置起飞。
      */
     private double[] extractCentroid(Map<String, Object> spatialData) {
-        if (spatialData != null && spatialData.get("centroid") != null) {
-            try {
-                Object centroidObj = spatialData.get("centroid");
-                Map<String, Object> centroid;
-                if (centroidObj instanceof Map) {
-                    centroid = (Map<String, Object>) centroidObj;
-                } else {
-                    centroid = objectMapper.readValue(centroidObj.toString(), Map.class);
-                }
-                List<Double> coords = (List<Double>) centroid.get("coordinates");
-                if (coords != null && coords.size() >= 2) {
-                    return new double[]{coords.get(0), coords.get(1)};
-                }
-            } catch (Exception e) {
-                log.warn("解析质心坐标失败: {}", e.getMessage());
-            }
+        double[] c = GeoJsonSupport.parseCentroid(spatialData, objectMapper);
+        if (c != null) {
+            return c;
         }
         throw new IllegalArgumentException("建筑空间坐标缺失，无法规划航线");
     }

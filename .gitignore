@@ -37,5 +37,12 @@ Thumbs.db
 # Cesium
 frontend/public/cesium/
 
-# 临时截图
+# 临时截图 / 构建过程产物
 ui-screenshot*.png
+# .temp-portfolio 是作品集 HTML 的构建目录（含缩放后截图，约 1.8MB）
+# .temp-resume  是简历改写脚本的工作目录
+.temp-portfolio/
+.temp-resume/
+
+# 浏览器临时 profile（前端截图脚本用，约 6.7MB，勿入库）
+.temp-edge-profile/

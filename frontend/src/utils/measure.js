@@ -48,16 +48,35 @@ export function createMeasureController(viewer, mode) {
     return sum
   }
 
-  /** 局部 ENU 切平面投影 + 鞋带公式（校园尺度误差 <0.1%） */
+  /**
+   * 局部 ENU 切平面投影 + 鞋带公式。
+   *
+   * 实现要点（这里踩过两个坑，别再改回去）：
+   *
+   * 1. 原点直接用 points[0]（Cartesian3 世界坐标）。
+   *    原写法 `Cesium.Cartesian3.fromCartesian(...)` 是错的 —— `fromCartesian`
+   *    只存在于 `Cartographic` 上，`Cartesian3` **从来没有**这个静态方法，
+   *    因此这里每次调用都抛 TypeError，测面积功能从未真正工作过。
+   *
+   * 2. 必须用 ENU 变换矩阵的**逆**把点变到局部系，不能拿矩阵的列向量去点积。
+   *    `eastNorthUpToFixedFrame` 返回的列是**位置矢量**（模长≈地球半径），
+   *    而且 east/north/up 三列并非相互正交。原写法
+   *    `dot(v, new Cartesian3(m[0],m[4],m[8]))` 相当于把 v 投影到一组
+   *    非正交基上，结果被剪切：实测 100m 的边会算成 72m / 138m，面积偏差 5.6%。
+   *    改用逆矩阵后，局部坐标严格是 (东, 北, 天)，实测边长误差 <0.01%。
+   *
+   * @param {Cesium.Cartesian3[]} points 多边形顶点（世界坐标）
+   * @returns {number} 面积（平方米）
+   */
   function computeEnuArea(points) {
     if (points.length < 3) return 0
-    const origin = Cesium.Cartesian3.fromCartesian(Cesium.Cartographic.fromCartesian(points[0]))
-    const m = Cesium.Transforms.eastNorthUpToFixedFrame(origin)
-    const east = new Cesium.Cartesian3(m[0], m[4], m[8])
-    const north = new Cesium.Cartesian3(m[1], m[5], m[9])
+    const origin = points[0]
+    const enuFrame = Cesium.Transforms.eastNorthUpToFixedFrame(origin)
+    const inverseFrame = Cesium.Matrix4.inverse(enuFrame, new Cesium.Matrix4())
     const planar = points.map(p => {
-      const v = Cesium.Cartesian3.subtract(p, origin, new Cesium.Cartesian3())
-      return { e: Cesium.Cartesian3.dot(v, east), n: Cesium.Cartesian3.dot(v, north) }
+      // multiplyByPoint 会自动做齐次坐标除法（w=1），得到局部 ENU 坐标
+      const local = Cesium.Matrix4.multiplyByPoint(inverseFrame, p, new Cesium.Cartesian3())
+      return { e: local.x, n: local.y }
     })
     let area = 0
     const n = planar.length

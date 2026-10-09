@@ -20,7 +20,6 @@
     <properties>
         <java.version>17</java.version>
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
-        <postgis.version>2023.1.0</postgis.version>
         <springdoc.version>2.3.0</springdoc.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
@@ -30,6 +29,17 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            Bean Validation（JSR-380）
+            注意：该 starter **不是** spring-boot-starter-web 的传递依赖，
+            必须显式声明，否则 @Valid / @NotNull 等注解会被静默忽略、完全不生效。
+            引入后可提供：@Valid 请求体校验 + MethodArgumentNotValidException 统一处理。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
         <!-- MyBatis-Plus -->
@@ -46,12 +56,14 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- PostGIS JDBC -->
-        <dependency>
-            <groupId>net.postgis</groupId>
-            <artifactId>postgis-jdbc</artifactId>
-            <version>${postgis.version}</version>
-        </dependency>
+        <!--
+            已移除 net.postgis:postgis-jdbc。
+            原因：本项目所有几何都以 GeoJSON 文本经 JDBC 往返
+            （写入走 ST_GeomFromGeoJSON(...)，读取走 ST_AsGeoJSON(...)），
+            从未注册过 PGgeometry 的 TypeHandler，该依赖属于死依赖。
+            注意 JdbcURL 未设 stringtype=unspecified，因此新增几何写入时
+            必须继续用 ST_GeomFromGeoJSON(...) 包装，不能直接传字符串参数。
+        -->
 
         <!-- Swagger / OpenAPI -->
         <dependency>

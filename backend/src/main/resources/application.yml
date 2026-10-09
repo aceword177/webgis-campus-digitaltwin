@@ -1,24 +1,16 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
   servlet:
     context-path: /
 
 spring:
   application:
     name: campus-digital-twin
+  # 默认激活 local profile；可用 --spring.profiles.active=prod 覆盖
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
   jackson:
     property-naming-strategy: SNAKE_CASE
-  datasource:
-    driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/shp_data
-    username: postgres
-    password: postgres
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
@@ -38,7 +30,17 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+    # 生产环境默认关闭（见 application-prod.yml），避免接口文档对外暴露
     enabled: true
+
+# ===== 业务开关 =====
+campus:
+  cleanup:
+    # 启动时是否执行历史脏数据清理（DataCleanupRunner）。
+    # 默认 false：该清理会改写业务数据（把超期配送中订单置为 cancelled、
+    # 修正航线与无人机状态、把空闲无人机挪回食堂），属破坏性操作，
+    # 不应在每次启动时无条件执行。需要时显式改为 true。
+    enabled: ${CAMPUS_CLEANUP_ENABLED:false}
 
 logging:
   level:

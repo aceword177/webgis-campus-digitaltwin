@@ -17,7 +17,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMapStore } from '@/stores/map'
 import { formatDistance, formatArea } from '@/utils/cesium'

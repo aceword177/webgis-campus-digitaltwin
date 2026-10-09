@@ -6,7 +6,7 @@
     </div>
     <template v-if="popup.type === 'overview'">
       <div v-for="t in tiers" :key="t.seconds" class="cp-tier" @click="showTier(t)">
-        <span class="cp-tier-name">{{ t.seconds }}s · {{ fmtRadius(t.radius) }}</span>
+        <span class="cp-tier-name">{{ t.seconds }}s 可达区</span>
         <span class="cp-tier-count">覆盖 {{ t.dormitories.length }} 栋</span>
       </div>
       <div v-if="!tiers.length" class="cp-empty">暂无覆盖数据</div>
@@ -54,7 +54,6 @@ function close() {
   mapStore.coveragePopup = null
 }
 const fmtM = (v) => (v >= 1000 ? (v / 1000).toFixed(2) + ' km' : Math.round(v) + ' m')
-const fmtRadius = (v) => (v || 0) + 'm'
 </script>
 
 <style scoped>

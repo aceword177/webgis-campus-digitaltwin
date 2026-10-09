@@ -80,4 +80,33 @@ public interface NavigationMapper {
             "<foreach collection='edgeIds' item='eid' open='(' separator=',' close=')'>#{eid}</foreach>" +
             "</script>")
     List<Map<String, Object>> checkPathCrossNoFlyZone(@Param("edgeIds") List<Integer> edgeIds);
+
+    /**
+     * 由节点 id 序列拼出该段航线的 GeoJSON（LineString）。
+     * 供食堂覆盖分析绘制"实际可达路径"使用。
+     */
+    @Select("SELECT ST_AsGeoJSON(ST_MakeLine(geom ORDER BY ordinality)) AS path_geojson " +
+            "FROM drone_nav_node n " +
+            "JOIN UNNEST(#{nodeIds}::int[]) WITH ORDINALITY AS t(id, ordinality) ON n.id = t.id")
+    Map<String, Object> buildPathGeojson(@Param("nodeIds") String nodeIds);
+
+    /**
+     * 把多条实际航线缓冲后求并集，得到该档的"可达区"面（GeoJSON）。
+     *
+     * <p>为什么必须换成面：分档依据是 A* 的**实走距离**（沿 15m 栅格、会绕行限飞区），
+     * 而圆是直线半径。两者数学上不等价，于是出现"圆里不含某宿舍，面板列表里却有它"
+     * 的自相矛盾。用实际路径并集生成面后，图形与列表严格自洽。
+     *
+     * @param paths  单条 LineString 的 GeoJSON 列表（至少一条）
+     * @param bufferM 线扩成面的缓冲半宽（米）
+     */
+    @Select("<script>" +
+            "SELECT ST_AsGeoJSON(ST_Union(ARRAY[" +
+            "<foreach collection='paths' item='p' separator=','>" +
+            "ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON(#{p}), 4326)::geography, #{bufferM})::geometry" +
+            "</foreach>" +
+            "])) AS reach_geojson" +
+            "</script>")
+    Map<String, Object> buildReachPolygon(@Param("paths") List<String> paths,
+                                          @Param("bufferM") double bufferM);
 }

@@ -52,6 +52,17 @@ public class Result<T> implements Serializable {
         return result;
     }
 
+    /**
+     * 带明细数据的错误响应。
+     * 主要用于校验失败时回传字段级错误（{@code {"startLng":"起点经度不能为空"}}），
+     * 前端可据此把错误定位到具体表单项，而不是只弹一句笼统提示。
+     */
+    public static <T> Result<T> error(Integer code, String message, T data) {
+        Result<T> result = error(code, message);
+        result.setData(data);
+        return result;
+    }
+
     public static <T> Result<T> error(ResultCode resultCode) {
         return error(resultCode.getCode(), resultCode.getMessage());
     }

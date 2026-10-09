@@ -1,5 +1,6 @@
 package com.campus.twin.controller;
 
+import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
 import com.campus.twin.dto.DroneStatsVO;
 import com.campus.twin.entity.Drone;
@@ -31,7 +32,7 @@ public class DroneController {
     public Result<Drone> getById(@PathVariable Integer id) {
         Drone drone = droneService.getById(id);
         if (drone == null) {
-            return Result.error("无人机不存在");
+            throw new ResourceNotFoundException("无人机", id);
         }
         return Result.success(drone);
     }

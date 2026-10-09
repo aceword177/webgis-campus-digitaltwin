@@ -9,7 +9,21 @@
         - road:             id, geom, name, SHAPE_Leng（无 height, 无 SHAPE_Area）
         - playground/basketball_court/tennis_court: id, geom, name, SHAPE_Leng, SHAPE_Area（无 height）
         - teaching_building/dormitory/other_buildings: id, geom, name, height, SHAPE_Leng, SHAPE_Area
+        - teaching_building 另有 dept_name（所属院系）、description（学院简介）
+        - dormitory         另有 gender（男/女）
+
+        注意：这些都是**非白名单表共有的列**，必须放在 <if> 里按表名判断，
+        否则查询 school / road 等表时会报 "column does not exist"。
     -->
+
+    <!--
+        建筑业务属性片段：点击弹窗展示用（所属院系 / 学院简介 / 宿舍性别）。
+        三张建筑表列不一致，因此逐列按表名判断。
+    -->
+    <sql id="buildingProfileColumns">
+        <if test='table == "teaching_building"'>dept_name, description,</if>
+        <if test='table == "dormitory"'>gender,</if>
+    </sql>
 
     <!-- 点选查询：判断坐标点落在哪个要素内 -->
     <select id="selectByPoint" resultType="java.util.Map">
@@ -17,6 +31,7 @@
             id,
             <if test='table != "school"'>name,</if>
             <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            <include refid="buildingProfileColumns"/>
             "SHAPE_Leng" AS shape_leng,
             <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
             ROUND(CASE WHEN ST_GeometryType(geom) IN ('ST_Polygon', 'ST_MultiPolygon')
@@ -33,6 +48,11 @@
     </select>
 
     <!-- 缓冲区查询：查询指定半径范围内的要素，按距离升序（geography 真实米） -->
+    <!--
+        重要：radius 的单位是「米」，因此必须把几何转成 geography 再交给 ST_DWithin。
+        若直接对 geometry(4326) 调用 ST_DWithin，第三个参数会按**坐标单位（度）**解释，
+        传 radius=100 会变成 100 度（约上万公里），语义完全错误。
+    -->
     <select id="selectByBuffer" resultType="java.util.Map">
         SELECT
             id,
@@ -41,25 +61,26 @@
             ST_AsGeoJSON(geom) AS geom,
             ROUND(
                 ST_Distance(
-                    ST_SetSRID(geom, 4326)::geography,
+                    geom::geography,
                     ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography
                 )::numeric, 2
             ) AS distance_m
         FROM ${table}
         WHERE ST_DWithin(
-            ST_SetSRID(geom, 4326)::geography,
+            geom::geography,
             ST_SetSRID(ST_MakePoint(#{lng}, #{lat}), 4326)::geography,
             #{radius}
         )
         ORDER BY distance_m ASC
     </select>
 
-    <!-- 查询整表 GeoJSON 数据 -->
+    <!-- 查询整表 GeoJSON 数据（含建筑业务属性，便于前端图层直接取用） -->
     <select id="selectAllGeoJson" resultType="java.util.Map">
         SELECT
             id,
             <if test='table != "school"'>name,</if>
             <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            <include refid="buildingProfileColumns"/>
             "SHAPE_Leng" AS shape_leng,
             <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
             ROUND(CASE WHEN ST_GeometryType(geom) IN ('ST_Polygon', 'ST_MultiPolygon')
@@ -77,6 +98,7 @@
             id,
             <if test='table != "school"'>name,</if>
             <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
+            <include refid="buildingProfileColumns"/>
             "SHAPE_Leng" AS shape_leng,
             <if test='table != "road"'>"SHAPE_Area" AS shape_area,</if>
             ROUND(CASE WHEN ST_GeometryType(geom) IN ('ST_Polygon', 'ST_MultiPolygon')

@@ -3,13 +3,18 @@ package com.campus.twin.service;
 import com.campus.twin.dto.DeliveryStatsVO;
 import com.campus.twin.dto.OrderCreateRequest;
 import com.campus.twin.dto.OrderDetailVO;
+import com.campus.twin.dto.OrderListVO;
 import com.campus.twin.entity.DeliveryOrder;
 
 import java.util.List;
 
 public interface OrderService {
 
-    List<DeliveryOrder> list(String status, Integer page, Integer size);
+    /**
+     * 订单列表（含餐厅/宿舍楼名称）。
+     * 返回 VO 而非实体：实体的 restaurantId/dormitoryId 无法满足前端展示与 api.md 契约。
+     */
+    List<OrderListVO> list(String status, Integer page, Integer size);
 
     OrderDetailVO getDetail(Integer id);
 

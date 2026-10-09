@@ -10,10 +10,21 @@
         - ST_AsMVTGeom: 将几何转为瓦片坐标空间
         - ST_AsMVT: 打包为 MVT (Mapbox Vector Tile) 格式
         字段按表名条件选择（各表字段不同）
+
+        注意 resultType 必须用下划线前缀的 _byte[]（原始类型数组别名）。
+        若写成 byte[]，MyBatis 会解析成 java.lang.Byte[]（对象数组），
+        配合 Mapper 方法声明的基本类型数组返回值，会在
+        MapperMethod.convertToArray 里执行 Array.set(byte[], i, Byte[])
+        并抛 IllegalArgumentException: argument type mismatch。
+        详见 TileMapper.java 的接口注释。
     -->
-    <select id="selectMvt" resultType="byte[]">
+    <select id="selectMvt" resultType="_byte[]">
         WITH bounds AS (
             SELECT ST_TileEnvelope(#{z}, #{x}, #{y}) AS geom
+        ),
+        bbox AS (
+            -- 把瓦片包络从 3857 转回 4326，用于走原始列上的 GiST 索引
+            SELECT ST_Transform((SELECT geom FROM bounds), 4326) AS geom
         ),
         mvtgeom AS (
             SELECT
@@ -21,17 +32,24 @@
                 <if test='table != "school"'>name,</if>
                 <if test='table == "teaching_building" or table == "dormitory" or table == "other_buildings"'>height,</if>
                 ST_AsMVTGeom(
-                    ST_Transform(ST_SetSRID(t.geom, 4326), 3857),
+                    ST_Transform(t.geom::geometry, 3857),
                     (SELECT geom FROM bounds),
                     4096,
                     64,
                     true
                 ) AS geom
             FROM ${table} t
-            WHERE ST_Intersects(
-                ST_Transform(ST_SetSRID(t.geom, 4326), 3857),
-                (SELECT geom FROM bounds)
-            )
+            WHERE
+                -- ① bbox 预过滤：使用 PostGIS 的边界框相交算子（两个 &amp; 号），
+                --    可直接命中 idx_&lt;table&gt;_geom 这个 GiST 索引（索引建在原始 4326 列上）。
+                --    此前直接用 ST_Intersects(ST_Transform(geom,3857), tile) 会逐行做
+                --    坐标变换，属不可索引表达式 → 每次瓦片请求全表扫描。
+                t.geom &amp;&amp; (SELECT geom FROM bbox)
+                -- ② 精确相交：在预过滤结果上再做真实几何判断，保证裁剪正确
+                AND ST_Intersects(
+                    ST_Transform(t.geom::geometry, 3857),
+                    (SELECT geom FROM bounds)
+                )
         )
         SELECT ST_AsMVT(mvtgeom.*, '${table}', 4096, 'geom')
         FROM mvtgeom

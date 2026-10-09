@@ -1,5 +1,6 @@
 package com.campus.twin.controller;
 
+import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
 import com.campus.twin.entity.Product;
 import com.campus.twin.service.ProductService;
@@ -18,6 +19,10 @@ public class ProductController {
 
     private final ProductService productService;
 
+    /** 热销榜条数上限：防止 ?limit=1000000 一次拉爆 */
+    private static final int MAX_HOT_LIMIT = 50;
+    private static final int DEFAULT_HOT_LIMIT = 10;
+
     @Operation(summary = "产品列表（支持按餐厅/分类/关键词筛选）")
     @GetMapping("/list")
     public Result<List<Product>> list(
@@ -32,7 +37,7 @@ public class ProductController {
     public Result<Product> getById(@PathVariable Integer id) {
         Product product = productService.getById(id);
         if (product == null) {
-            return Result.error("产品不存在");
+            throw new ResourceNotFoundException("产品", id);
         }
         return Result.success(product);
     }
@@ -41,6 +46,8 @@ public class ProductController {
     @GetMapping("/hot")
     public Result<List<Product>> getHotProducts(
             @RequestParam(defaultValue = "10") Integer limit) {
-        return Result.success(productService.getHotProducts(limit));
+        // 显式钳制：非正数回落到默认值，超上限截断
+        int safeLimit = (limit == null || limit < 1) ? DEFAULT_HOT_LIMIT : Math.min(limit, MAX_HOT_LIMIT);
+        return Result.success(productService.getHotProducts(safeLimit));
     }
 }

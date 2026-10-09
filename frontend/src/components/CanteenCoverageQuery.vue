@@ -53,15 +53,19 @@
           <!-- 图例 -->
           <div class="cq-legend">
             <div class="cq-legend-item">
-              <span class="cq-dot" style="background:#00E676"></span>30s · 150m
+              <span class="cq-dot" style="background:#00E676"></span>30s 可达区
             </div>
             <div class="cq-legend-item">
-              <span class="cq-dot" style="background:#FFAB00"></span>60s · 300m
+              <span class="cq-dot" style="background:#FFAB00"></span>60s 可达区
             </div>
             <div class="cq-legend-item">
-              <span class="cq-dot" style="background:#FF1744"></span>90s · 450m
+              <span class="cq-dot" style="background:#FF1744"></span>90s 可达区
             </div>
-            <div class="cq-note">圆=时间参考线 · 高亮点=实际覆盖宿舍</div>
+            <div class="cq-note">
+              可达区由该档宿舍的<b>实际导航路径</b>缓冲生成，
+              因此图上覆盖到的宿舍与上方列表严格一致；
+              因需绕行限飞区，可达区呈不规则形状而非圆形。
+            </div>
           </div>
         </template>
       </template>

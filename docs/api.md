@@ -45,13 +45,28 @@
   "code": 200,
   "data": {
     "id": 1,
-    "name": "1号教学楼",
+    "name": "6号教学楼",
     "height": 6,
+    "dept_name": "商学院",
+    "description": "商学院立足区域经济发展，设有工商管理、市场营销、会计学等专业……",
     "shape_area": 0.0000025,
-    "geom": "{\"type\":\"Polygon\",\"coordinates\":[...]}"
+    "perimeter_m": 202.45,
+    "area_sqm": 1637.46,
+    "geom": "{\"type\":\"MultiPolygon\",\"coordinates\":[...]}"
   }
 }
 ```
+
+**建筑业务属性字段**（点击建筑弹窗的数据来源，按表名条件返回，其他表不带）：
+
+| 字段 | 表 | 说明 |
+|------|------|------|
+| `dept_name` | teaching_building | 所属院系 |
+| `description` | teaching_building | 学院简介 |
+| `gender` | dormitory | 宿舍性别：男 / 女 |
+
+> 建筑照片不走接口字段，前端按 `frontend/public/buildings/{表名}-{id}.jpg` 约定取图，
+> 缺图自动回退占位图。详见 `frontend/public/buildings/README.md`。
 
 ### 1.3 缓冲区查询
 
@@ -77,7 +92,7 @@
 
 - **URL**: `GET /api/spatial/building/{table}/{id}`
 - **参数**: `table` 表名，`id` 要素 ID
-- **响应**: 单个要素详情，含 centroid 中心点
+- **响应**: 单个要素详情，含 centroid 中心点；建筑表附带 `dept_name` / `description` / `gender`（同 1.2 的字段表）
 
 ### 1.6 获取校园边界和中心点
 

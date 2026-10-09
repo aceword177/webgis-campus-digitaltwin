@@ -7,18 +7,31 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "npm run lint && npm run build",
+    "verify": "node scripts/verify-frontend.mjs src/main.js src/App.vue src/stores/map.js src/utils/cesium.js src/utils/basemap.js src/utils/measure.js src/components/CesiumViewer.vue src/components/BuildingPopup.vue",
+    "verify:cesium": "node scripts/verify-cesium-reactivity.mjs",
+    "verify:behavior": "node scripts/verify-cesium-behavior.mjs",
+    "verify:outlines": "node scripts/verify-building-outlines.mjs",
+    "verify:api": "node scripts/verify-cesium-api-usage.mjs",
+    "verify:popup": "node scripts/verify-popup-position.mjs",
+    "verify:all": "npm run verify && npm run verify:cesium && npm run verify:behavior && npm run verify:outlines && npm run verify:api && npm run verify:popup"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.6.8",
-    "cesium": "^1.114.0",
+    "cesium": "1.145.0",
     "element-plus": "^2.7.0",
     "pinia": "^2.1.7",
     "vue": "^3.4.21"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^15.15.0",
     "vite": "^5.2.0",
     "vite-plugin-cesium": "^1.2.22"
   }

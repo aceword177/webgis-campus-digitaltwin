@@ -36,11 +36,21 @@ public class RouteServiceImpl implements RouteService {
     /** 无人机飞行速度(m/s)，默认5m/s ≈ 18km/h（与实时位置推进保持一致） */
     private static final double FLIGHT_SPEED = 5.0;
 
+    /** 默认飞行高度(米)：客户端未指定或显式传 null 时使用 */
+    private static final double DEFAULT_ALTITUDE_M = 50.0;
+
     @Override
     public RoutePlanResponse plan(RoutePlanRequest request) {
         log.info("开始规划航线: 起点({},{}) -> 终点({},{})",
                 request.getStartLng(), request.getStartLat(),
                 request.getEndLng(), request.getEndLat());
+
+        // 飞行高度兜底：@Valid 已拦住越界值，但 altitude 允许为 null
+        // （JSON 键缺失或显式传 null），此处统一回落到默认高度，
+        // 避免下游 BigDecimal.valueOf(null) 拆箱 NPE
+        double effectiveAltitude = request.getAltitude() != null
+                ? request.getAltitude()
+                : DEFAULT_ALTITUDE_M;
 
         // Step 1: 找起点最近的可飞行网格节点
         Map<String, Object> startNode = navigationMapper.findNearestWalkableNode(
@@ -131,7 +141,7 @@ public class RouteServiceImpl implements RouteService {
                 .waypointsCount(waypoints.size())
                 .distanceM(distanceM)
                 .estimatedSeconds(estimatedSeconds)
-                .altitudeM(request.getAltitude())
+                .altitudeM(effectiveAltitude)
                 .startNodeId(startNodeId)
                 .endNodeId(endNodeId)
                 .avoidedNoFlyZone(avoidedNoFlyZone)

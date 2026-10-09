@@ -1,15 +1,96 @@
 # 校园无人机外卖配送系统（WebGIS 数字孪生 MVP v2.0）
 
-> 面向 WebGIS 工程师就业的全栈项目 — 基于真实校园空间数据的数字孪生三维可视化 + 无人机外卖配送闭环
+> 面向 WebGIS 工程师就业的全栈项目 — 校园空间数据自主矢量化生产（ArcMap，8 图层 / 62 要素）→ PostGIS 入库 → 数字孪生三维可视化 + 无人机外卖配送闭环
+
+<!-- ============================================================
+     项目链接区：投递简历前请把下面 3 个占位符替换为真实地址，
+     未部署的项直接删掉整行，不要保留 <...> 占位符。
+     ============================================================ -->
+| | |
+|---|---|
+| **源码仓库** | <https://github.com/你的用户名/webgis-campus-digitaltwin> |
+| **在线演示** | <https://你的演示地址> |
+| **作品集（功能截图与技术要点）** | 随简历投递的 `WebGIS开发作品集.pdf` |
+| **说明** | 演示环境按需启动；本地一键运行见 [快速启动](#快速启动) |
 
 ## 技术栈
 
 | 层级 | 技术 | 版本 |
 |------|------|------|
-| **前端** | Vue3 + Vite + Cesium + Element-Plus + Pinia | Vue 3.4 / Vite 5 / Cesium 1.114 |
+| **前端** | Vue3 + Vite + Cesium + Element-Plus + Pinia | Vue 3.4 / Vite 5 / Cesium 1.145 |
 | **后端** | Spring Boot + MyBatis-Plus + HikariCP | Spring Boot 3.2 / Java 17 / MyBatis-Plus 3.5 |
 | **数据库** | PostgreSQL + PostGIS + **pgRouting** | PostgreSQL 18 / pgRouting（A* 路径规划） |
-| **坐标系统** | WGS84 (SRID 4326) | — |
+| **坐标系统** | 入库统一标注 WGS84 (SRID 4326)，14 个空间列 SRID 一致 | — |
+| **坐标基准** | 数据实际为高德 GCJ-02 基准（`.prj` 标注 `GCS_WGS_1984` 与实体不符），底图取同基准高德影像零平移；实测与 WGS84 底图偏差约 109m | — |
+| **空间数据来源** | ArcMap 依影像底图手工矢量化 8 个图层 / 62 个要素，导出 Shapefile 后导入 PostGIS | — |
+
+> ⚠️ Cesium 版本**已钉死为 `1.145.0`**（`frontend/package.json`），不要改回 `^1.114.0` 这类范围。
+> 之前写成 `^1.114.0`，实际被解析到 1.145.0，README 与真实运行版本对不上，
+> 排查问题时引用的行号和 API 行为都会失真。
+
+### 关键实现约束（改代码前必读）
+
+**1. 绝不要把 Cesium 对象放进 Vue 的响应式状态。**
+
+这条是硬约束，违反会导致页面一打开就崩：
+
+```
+An error occurred while rendering. Rendering has stopped.
+DataCloneError: Failed to execute 'postMessage' on 'Worker': [object Object] could not be cloned.
+```
+
+原因：Cesium 的几何构建走 Web Worker，主线程执行
+`worker.postMessage({ id, baseUrl, parameters, canTransferArrayBuffer })`。
+`parameters` 里一旦含 Vue 的 reactive Proxy，结构化克隆就抛 `DataCloneError`，
+异常逃出 `viewer.render()`，被渲染循环的 `catch` 捕获后弹出上面那个错误面板。
+
+因此 `stores/map.js` 中持有 Cesium 实例的状态**必须**用 shallow 变体：
+
+| 状态 | 正确写法 | 用错会怎样 |
+|---|---|---|
+| `viewer` | `shallowRef(null)` | `viewer.value` 成 Proxy，传回 Cesium 即崩 |
+| `dataSources` | `shallowReactive({})` | 存入的 DataSource 被深度代理 |
+| `measureController` | `shallowRef(null)` | 内部 Cesium 实体被代理 |
+| `baseAnnotationLayer` | `shallowRef(null)` | ImageryLayer 被代理 |
+
+对应地，`CesiumViewer.vue` 的容器 DOM 也用 `shallowRef`（它会被 Viewer 长期持有）。
+
+shallow 变体只跟踪顶层替换，**不影响**本项目的用法：切图层时
+`Object.entries(dataSources)` 的增删改仍能正常追踪。
+回归测试见 `frontend/scripts/verify-cesium-reactivity.mjs`。
+
+> 参考：CesiumGS/cesium#12438（官方结论即为"不要把 Viewer / DataSource
+> 放进 Vue/Pinia 的响应式状态"）。
+
+**2. 拉伸建筑不能用 `clampToGround: true`。**
+
+`height=0` + `extrudedHeight` 是"从地面立起来"的拉伸体块，而 `clampToGround`
+是"把多边形贴到地形表面"，二者语义互斥 —— 贴地多边形走 GroundPrimitive，
+根本不支持 height/extrudedHeight，Cesium 只能反复重建几何去协调这对矛盾属性。
+同理 `polygon.outline` 只对贴地多边形生效，拉伸体块的描边要另用贴地 polyline
+（见 `utils/cesium.js#addBuildingOutlines`）。
+
+**3. Cesium API 会随小版本消失，不要直接调 `Cesium.SceneTransforms.*`。**
+
+`SceneTransforms.wgs84ToWindowCoordinates` 在 1.121 前后改名为
+`worldToWindowCoordinates`。旧调用语法完全合法、SFC 编译也通过，只有运行时
+才抛 `TypeError: ... is not a function` —— 而它发生在 `postRender` 里，
+表现是「点击后有数据但弹窗不出现」。
+统一走 `utils/cesium.js#worldToWindowCoordinates` 兼容封装（新名 → 旧名 → null）。
+
+**4. `geoJson` 里的 `isLoading` 是布尔属性，不是方法。**
+
+写成 `dataSource.isLoading?.()` 会抛 `TypeError`（`?.` 只对 null/undefined 短路，
+对"存在但不是函数"的值照样调用）。又因为 Cesium 的点击回调是 `async`，
+异常会变成**未处理的 Promise rejection**：不亮红字、不弹提示，点击功能静默失效。
+点击处理器现已整体包 try/catch，但新代码仍须注意。
+
+**5. 测面积用 ENU 逆矩阵，不要拿变换矩阵的列向量做点积。**
+
+`eastNorthUpToFixedFrame` 返回的三列是**位置矢量**（模长≈地球半径）且并非正交，
+用列向量点积会把多边形剪切变形：实测 100m 的边会算成 72m / 138m，面积偏差 5.6%。
+必须用 `Matrix4.inverse` 把点变到局部 ENU 系（实测偏差 <0.01%）。
+详见 `utils/measure.js#computeEnuArea`。
 
 ## 项目结构
 
@@ -109,8 +190,9 @@ SELECT * FROM restaurant;
 ```bash
 cd backend
 
-# 修改数据库连接（如非默认配置）
-# 编辑 src/main/resources/application.yml 中的 url/username/password
+# 数据库连接（默认已指向本地 shp_data，零配置可启动）
+# 如需修改：编辑 src/main/resources/application-local.yml，
+# 或用环境变量覆盖 DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD
 
 # 编译运行
 mvn spring-boot:run
@@ -119,6 +201,45 @@ mvn spring-boot:run
 后端启动成功后：
 - 接口地址：http://localhost:8080
 - Swagger 文档：http://localhost:8080/swagger-ui.html
+
+##### 运行单元测试（注意 JDK 版本）
+
+```powershell
+cd backend
+$env:JAVA_HOME = "C:\jdk-17.0.20+8"   # 必须用 JDK 17
+mvn test
+```
+
+> ⚠️ **跑测试必须用 JDK 17，不能用 JDK 25 / IDEA 自带 JBR。**
+> Spring Boot 3.2.5 带的 ByteBuddy 1.14.1 无法在 JDK 25 上做类插桩，会让 Mockito 全部报错：
+> `MockitoException: Could not modify all classes ... IllegalStateException: Compiled by older versions of scalac`。
+> JDK 17 正是 `pom.xml` 声明的 `java.version`。（编译本身用 JDK 25 也能过，仅跑测试受限。）
+
+当前共 **48 个单元测试**：距离口径、GeoJSON 解析、订单状态机、航线规划、表名白名单（SQL 注入防护）。
+
+##### Profile 说明
+
+| Profile | 用途 | 数据库连接 | Swagger |
+|---|---|---|---|
+| `local`（默认） | 本地开发 | 占位符 + 本地默认值，零配置可启动 | 开 |
+| `prod` | 生产 | **必须**由环境变量提供，缺失即启动失败 | 关 |
+
+```bash
+# 本地（默认，无需指定 profile）
+mvn spring-boot:run
+
+# 生产：需提供 DB_HOST / DB_NAME / DB_USER / DB_PASSWORD，否则启动即失败（fail-fast）
+mvn spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+> `prod` 会在启动阶段强制取一条数据库连接（`resources/db/validate-connection.sql`），
+> 避免出现"启动成功但接口全 500、定时任务静默报错"的危险状态。
+
+##### 可选业务开关
+
+| 开关 | 默认 | 说明 |
+|---|---|---|
+| `CAMPUS_CLEANUP_ENABLED`（即 `campus.cleanup.enabled`） | `false` | 启动时是否执行历史脏数据清理。该操作会**改写业务数据**（把超期配送中订单置为 cancelled、修正航线与无人机状态、把空闲无人机挪回食堂），属破坏性操作，故默认关闭 |
 
 #### 3. 启动前端
 
@@ -130,6 +251,10 @@ npm install
 
 # 启动开发服务器
 npm run dev
+
+# 静态检查（ESLint）+ 生产构建
+npm run lint
+npm run check
 ```
 
 前端启动后访问 http://localhost:5173
@@ -145,7 +270,10 @@ npm run dev
 - 道路线渲染、运动场地半透明面、校园边界黄色描边
 
 ### 空间交互
-- **建筑点击**：点击建筑弹出属性面板（名称、楼层、面积、坐标）
+- **建筑点击弹窗**：点击教学楼弹出**所属院系 + 学院简介 + 学院照片**；点击宿舍楼弹出**楼名 + 男生/女生宿舍 + 宿舍楼照片**
+  - 悬停楼体即高亮 + 光标变手型，提示可点击
+  - 拾取用射线求交（`scene.pickPosition` → `globe.pick` → `pickEllipsoid` 三级兜底），点击楼体上部也能命中
+  - 照片按 `frontend/public/buildings/{表名}-{id}.jpg` 约定取图，缺图自动回退占位图，不出现裂图
 - **图层控制**：左侧面板独立控制每个图层显隐
 - **测距工具**：左键连续打点，右键结束，显示每段距离
 - **测面积工具**：左键绘制多边形，右键结束，显示面积

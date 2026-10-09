@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { MapLocation, InfoFilled } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { useMapStore } from '@/stores/map'

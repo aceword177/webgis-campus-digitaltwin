@@ -1,5 +1,6 @@
 package com.campus.twin.controller;
 
+import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
 import com.campus.twin.dto.RoutePlanRequest;
 import com.campus.twin.dto.RoutePlanResponse;
@@ -7,6 +8,7 @@ import com.campus.twin.entity.FlightRoute;
 import com.campus.twin.service.RouteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +24,7 @@ public class RouteController {
 
     @Operation(summary = "规划航线（核心算法：pgr_astar 最短路径 + 限飞区避让）")
     @PostMapping("/plan")
-    public Result<RoutePlanResponse> plan(@RequestBody RoutePlanRequest request) {
+    public Result<RoutePlanResponse> plan(@Valid @RequestBody RoutePlanRequest request) {
         return Result.success(routeService.plan(request));
     }
 
@@ -31,7 +33,8 @@ public class RouteController {
     public Result<FlightRoute> getById(@PathVariable Integer id) {
         FlightRoute route = routeService.getById(id);
         if (route == null) {
-            return Result.error("航线不存在");
+            // 抛出后由 GlobalExceptionHandler 映射为真实 HTTP 404
+            throw new ResourceNotFoundException("航线", id);
         }
         return Result.success(route);
     }

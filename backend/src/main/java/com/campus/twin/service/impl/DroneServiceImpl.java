@@ -2,15 +2,14 @@ package com.campus.twin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.twin.dto.DroneStatsVO;
+import com.campus.twin.common.GeoMath;
 import com.campus.twin.entity.DeliveryOrder;
 import com.campus.twin.entity.Drone;
 import com.campus.twin.entity.FlightRoute;
-import com.campus.twin.entity.Restaurant;
 import com.campus.twin.mapper.DeliveryOrderMapper;
 import com.campus.twin.mapper.DroneMapper;
 import com.campus.twin.mapper.FlightRouteMapper;
-import com.campus.twin.mapper.RestaurantMapper;
-import com.campus.twin.mapper.SpatialQueryMapper;
+import com.campus.twin.service.CanteenLocator;
 import com.campus.twin.service.DroneService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +24,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 @Slf4j
 @Service
@@ -35,20 +33,22 @@ public class DroneServiceImpl implements DroneService {
     private final DroneMapper droneMapper;
     private final DeliveryOrderMapper orderMapper;
     private final FlightRouteMapper flightRouteMapper;
-    private final RestaurantMapper restaurantMapper;
-    private final SpatialQueryMapper spatialQueryMapper;
+    private final CanteenLocator canteenLocator;
     private final ObjectMapper objectMapper;
 
     /** 无人机飞行速度(m/s)，与航线规划保持一致 */
     private static final double FLIGHT_SPEED_MPS = 5.0;
 
-    /** 充电落点散布半径（米）：无人机在食堂周边随机散布，避免重叠在食堂中心 */
-    private static final double CHARGE_SPREAD_M = 5.0;
-
-    /** 距食堂超过该距离(米)视为"不在食堂"，充电时会被挪回食堂 */
+    /** 距食堂超过该距离(米)视为"不在食堂"，充电/归位时会被挪回食堂 */
     private static final double CANTEEN_RANGE_M = 20.0;
 
-    private static final Random RANDOM = new Random();
+    /**
+     * 位置写库去重阈值（度）。
+     * 约 1e-5 度 ≈ 1.1 米：小于此位移视为"实质未动"，跳过写库。
+     * 原值 1e-7 度 ≈ 1.1 厘米，几乎每次 2s 推进都会触发一次 UPDATE。
+     */
+    private static final double POSITION_EPSILON_DEG = 1e-5;
+
 
     @Override
     public List<Drone> list(String status) {
@@ -127,12 +127,15 @@ public class DroneServiceImpl implements DroneService {
             try {
                 double lng = d.getCurrentLng() != null ? d.getCurrentLng().doubleValue() : 0.0;
                 double lat = d.getCurrentLat() != null ? d.getCurrentLat().doubleValue() : 0.0;
-                double[] canteen = findNearestCanteen(lng, lat);
+                CanteenLocator.Canteen canteen = canteenLocator.nearest(lng, lat);
                 if (canteen == null) {
                     continue;
                 }
-                if (haversine(lng, lat, canteen[0], canteen[1]) > CANTEEN_RANGE_M) {
-                    double[] spot = randomSpreadAround(canteen[0], canteen[1]);
+                if (GeoMath.haversine(lng, lat, canteen.lng(), canteen.lat()) > CANTEEN_RANGE_M) {
+                    double[] spot = canteenLocator.parkingSpotFor(d.getId(), lng, lat);
+                    if (spot == null) {
+                        continue;
+                    }
                     d.setCurrentLng(java.math.BigDecimal.valueOf(spot[0]));
                     d.setCurrentLat(java.math.BigDecimal.valueOf(spot[1]));
                     d.setLastUpdateTime(LocalDateTime.now());
@@ -178,8 +181,8 @@ public class DroneServiceImpl implements DroneService {
                 }
                 // 位置基本无变化（已到终点/未起飞）时跳过写库，减少无效更新
                 if (drone.getCurrentLng() != null && drone.getCurrentLat() != null
-                        && Math.abs(drone.getCurrentLng().doubleValue() - pos[0]) < 1e-7
-                        && Math.abs(drone.getCurrentLat().doubleValue() - pos[1]) < 1e-7) {
+                        && Math.abs(drone.getCurrentLng().doubleValue() - pos[0]) < POSITION_EPSILON_DEG
+                        && Math.abs(drone.getCurrentLat().doubleValue() - pos[1]) < POSITION_EPSILON_DEG) {
                     continue;
                 }
                 drone.setCurrentLng(java.math.BigDecimal.valueOf(pos[0]));
@@ -242,15 +245,9 @@ public class DroneServiceImpl implements DroneService {
         return coords;
     }
 
-    /** 简易经纬度距离（米） */
+    /** 简易经纬度距离（米）：统一走 GeoMath，全项目只有一处实现 */
     private double haversine(double lng1, double lat1, double lng2, double lat2) {
-        double R = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLng = Math.toRadians(lng2 - lng1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return GeoMath.haversine(lng1, lat1, lng2, lat2);
     }
 
     /**
@@ -283,60 +280,23 @@ public class DroneServiceImpl implements DroneService {
         }
     }
 
-    /** 若无人机距最近食堂超过 CANTEEN_RANGE_M，则将其位置挪到最近食堂充电点（质心周边随机散布） */
+    /** 若无人机距最近食堂超过 CANTEEN_RANGE_M，则将其位置挪到食堂的确定性待命落点 */
     private void moveToNearestCanteenIfAway(Drone drone) {
         double lng = drone.getCurrentLng() != null ? drone.getCurrentLng().doubleValue() : 0.0;
         double lat = drone.getCurrentLat() != null ? drone.getCurrentLat().doubleValue() : 0.0;
-        double[] canteen = findNearestCanteen(lng, lat);
+        CanteenLocator.Canteen canteen = canteenLocator.nearest(lng, lat);
         if (canteen == null) {
             return;
         }
-        if (haversine(lng, lat, canteen[0], canteen[1]) > CANTEEN_RANGE_M) {
-            double[] spot = randomSpreadAround(canteen[0], canteen[1]);
+        if (GeoMath.haversine(lng, lat, canteen.lng(), canteen.lat()) > CANTEEN_RANGE_M) {
+            double[] spot = canteenLocator.parkingSpotFor(drone.getId(), lng, lat);
+            if (spot == null) {
+                return;
+            }
             drone.setCurrentLng(java.math.BigDecimal.valueOf(spot[0]));
             drone.setCurrentLat(java.math.BigDecimal.valueOf(spot[1]));
             log.info("无人机 {} 位置修正至食堂充电点({}, {})", drone.getDroneNo(),
                     String.format("%.5f", spot[0]), String.format("%.5f", spot[1]));
         }
-    }
-
-    /** 找离指定位置最近的食堂（餐厅所在建筑质心） */
-    private double[] findNearestCanteen(double lng, double lat) {
-        List<Restaurant> restaurants = restaurantMapper.selectList(null);
-        double[] best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (Restaurant r : restaurants) {
-            try {
-                Map<String, Object> building = spatialQueryMapper.selectById("other_buildings", r.getBuildingId());
-                String centroidStr = (String) building.get("centroid");
-                if (centroidStr == null) {
-                    continue;
-                }
-                Map<String, Object> centroid = objectMapper.readValue(centroidStr, Map.class);
-                List<Number> coords = (List<Number>) centroid.get("coordinates");
-                if (coords == null || coords.size() < 2) {
-                    continue;
-                }
-                double clng = coords.get(0).doubleValue();
-                double clat = coords.get(1).doubleValue();
-                double dist = haversine(lng, lat, clng, clat);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = new double[]{clng, clat};
-                }
-            } catch (Exception e) {
-                log.warn("获取食堂 {} 坐标失败: {}", r.getName(), e.getMessage());
-            }
-        }
-        return best;
-    }
-
-    /** 在指定点周边 CHARGE_SPREAD_M 米内随机散布（用于充电落点） */
-    private double[] randomSpreadAround(double lng, double lat) {
-        double angle = RANDOM.nextDouble() * 2 * Math.PI;
-        double dist = RANDOM.nextDouble() * CHARGE_SPREAD_M;
-        double dLat = dist * Math.cos(angle) / 111320.0;
-        double dLng = dist * Math.sin(angle) / (111320.0 * Math.cos(Math.toRadians(lat)));
-        return new double[]{lng + dLng, lat + dLat};
     }
 }

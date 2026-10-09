@@ -20,8 +20,15 @@ public class SpatialServiceImpl implements SpatialService {
 
     private final SpatialQueryMapper spatialQueryMapper;
 
-    /** 允许查询的表名白名单（防止 SQL 注入） */
-    private static final Set<String> ALLOWED_TABLES = Set.of(
+    /**
+     * 允许查询的表名白名单（防止 SQL 注入）。
+     *
+     * <p>用 List 而非 Set.of：{@code Set.of(...)} 的迭代顺序在 JVM 规范中**不作保证**，
+     * 用它初始化 layerCache 会导致 {@code /api/spatial/layers} 返回的图层顺序
+     * 每次重启都可能变化（难以复现、前端顺序也会莫名跳动）。
+     * List 同时充当白名单的 O(n) 成员判断与固定展示顺序，n=8 无需担心性能。
+     */
+    private static final List<String> ALLOWED_TABLES = List.of(
             "school", "teaching_building", "dormitory", "other_buildings",
             "road", "playground", "basketball_court", "tennis_court"
     );

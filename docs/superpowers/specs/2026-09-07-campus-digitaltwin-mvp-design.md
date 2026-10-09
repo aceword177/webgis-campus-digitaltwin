@@ -11,7 +11,9 @@
 | 前端 | Vue3 + Vite + Cesium + Element-Plus + Pinia | Vue 3.4 / Vite 5 / Cesium 1.114 / Element-Plus 2.5 |
 | 后端 | Spring Boot + MyBatis-Plus + HikariCP | Spring Boot 3.2 / Java 17 / MyBatis-Plus 3.5 |
 | 数据库 | PostgreSQL + PostGIS | PostgreSQL 18 |
-| 坐标系统 | WGS84 (SRID 4326) | — |
+| 坐标系统 | 入库统一标注 WGS84 (SRID 4326) | — |
+| 坐标基准 | 数据实际为高德 GCJ-02 基准（`.prj` 标注 `GCS_WGS_1984` 与实体不符）；底图取同基准高德影像零平移，实测与 WGS84 底图偏差约 109m | — |
+| 空间数据来源 | ArcMap 依影像底图手工矢量化 8 图层 / 62 要素 → 导出 Shapefile → 导入 PostGIS | — |
 
 ## 2. 项目结构
 
