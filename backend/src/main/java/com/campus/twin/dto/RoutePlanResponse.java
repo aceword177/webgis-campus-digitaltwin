@@ -49,4 +49,16 @@ public class RoutePlanResponse implements Serializable {
 
     /** 直线穿越的限飞区明细（id/name/level） */
     private List<Map<String, Object>> crossedZones;
+
+    /**
+     * 起终点直线距离（米，球面口径，与 distanceM 同基准）。
+     * 用于对比「直线 vs 规划路径」，量化 A* 为避让限飞区多飞的距离。
+     */
+    private Double straightDistanceM;
+
+    /** 绕行增量（米）= distanceM - straightDistanceM */
+    private Double detourM;
+
+    /** 绕行比例（绕行增量 / 直线距离）；直线距离小于 1m 时为 null（比值无意义） */
+    private Double detourRatio;
 }

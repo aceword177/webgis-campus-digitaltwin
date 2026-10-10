@@ -1,6 +1,7 @@
 package com.campus.twin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.campus.twin.common.GeoMath;
 import com.campus.twin.dto.RoutePlanRequest;
 import com.campus.twin.dto.RoutePlanResponse;
 import com.campus.twin.entity.FlightRoute;
@@ -108,6 +109,17 @@ public class RouteServiceImpl implements RouteService {
         // Step 7: 计算预计飞行时间
         Integer estimatedSeconds = (int) Math.ceil(distanceM / FLIGHT_SPEED);
 
+        // Step 7.1: 起终点直线距离与绕行增量
+        // 复用 GeoMath.haversine —— 它与 PostGIS 的 ::geography 同为球面口径，
+        // 因此与航线 distance_m 可直接相减，不会出现两种口径混算的偏差。
+        // 用途：前端展示「直线距离 vs 规划距离」，直观证明 A* 为避让限飞区多飞了多少。
+        double straightDistanceM = GeoMath.haversine(
+                request.getStartLng(), request.getStartLat(),
+                request.getEndLng(), request.getEndLat());
+        double detourM = distanceM - straightDistanceM;
+        // 绕行比例：直线极短时（如同一建筑内）比值会失去意义，故直线 < 1m 时不计算
+        Double detourRatio = straightDistanceM >= 1.0 ? detourM / straightDistanceM : null;
+
         // Step 8: 真实穿越检测（直线 vs A* 规划路径）
         // 8.1 起终点直线是否穿越限飞区（返回穿越明细）
         List<Map<String, Object>> crossedZones = navigationMapper.checkLineCrossNoFlyZone(
@@ -148,6 +160,9 @@ public class RouteServiceImpl implements RouteService {
                 .straightLineCrossZone(straightLineCrossZone)
                 .routeStillCrossZone(routeStillCrossZone)
                 .crossedZones(crossedZones)
+                .straightDistanceM(straightDistanceM)
+                .detourM(detourM)
+                .detourRatio(detourRatio)
                 .build();
     }
 

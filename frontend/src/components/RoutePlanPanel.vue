@@ -74,13 +74,32 @@
       <!-- 规划结果 -->
       <div class="result-section" v-if="planResult">
         <div class="result-title">规划结果</div>
+
+        <!-- 直线 vs 规划路径：量化 A* 为避让限飞区多飞的距离 -->
+        <div class="detour-box" :class="detourClass" v-if="hasDetour">
+          <div class="detour-head">{{ detourHeadline }}</div>
+          <div class="detour-rows">
+            <div class="detour-row">
+              <span class="k">直线距离</span>
+              <span class="v">{{ planResult.straight_distance_m?.toFixed(1) }} m</span>
+            </div>
+            <div class="detour-row">
+              <span class="k">规划距离</span>
+              <span class="v strong">{{ planResult.distance_m?.toFixed(1) }} m</span>
+            </div>
+            <div class="detour-row">
+              <span class="k">绕行增量</span>
+              <span class="v">{{ formatDetour(planResult.detour_m) }}</span>
+            </div>
+          </div>
+          <div class="detour-foot" v-if="planResult.detour_ratio != null">
+            为避让限飞区多飞 {{ (planResult.detour_ratio * 100).toFixed(0) }}%
+          </div>
+        </div>
+
         <div class="result-grid">
           <div class="result-item">
-            <span class="result-value">{{ planResult.distance_m?.toFixed(1) }}</span>
-            <span class="result-label">距离(米)</span>
-          </div>
-          <div class="result-item">
-            <span class="result-value">{{ formatDuration(planResult.estimated_seconds) }}</span>
+            <span class="result-value">{{ planResult.estimated_seconds != null ? formatDuration(planResult.estimated_seconds) : '-' }}</span>
             <span class="result-label">预计时长</span>
           </div>
           <div class="result-item">
@@ -92,6 +111,10 @@
           <div class="result-item">
             <span class="result-value">{{ planResult.waypoints_count }}</span>
             <span class="result-label">途径点</span>
+          </div>
+          <div class="result-item">
+            <span class="result-value">{{ planResult.altitude_m?.toFixed(0) }}</span>
+            <span class="result-label">高度(米)</span>
           </div>
         </div>
         <el-button size="small" style="width: 100%; margin-top: 8px" @click="showRouteOnMap">
@@ -267,6 +290,40 @@ const avoidanceClass = computed(() => {
   return ''
 })
 
+// ---------- 绕行对比（直线 vs 规划路径） ----------
+// 后端 RoutePlanResponse 已返回 straightDistanceM / detourM / detourRatio，
+// JSON 经 SNAKE_CASE 策略序列化为 snake_case，故前端读 straight_distance_m。
+// 存在该字段说明后端已升级（旧响应无此字段，此时整块不渲染，避免显示 undefined）。
+const hasDetour = computed(() => {
+  const v = planResult.value?.straight_distance_m
+  return typeof v === 'number' && isFinite(v)
+})
+
+const detourClass = computed(() => {
+  if (planResult.value?.route_still_cross_zone) return 'danger'
+  return ''
+})
+
+/** 一句话结论：这段航线是否真的绕开了限飞区 */
+const detourHeadline = computed(() => {
+  const r = planResult.value
+  if (!r) return ''
+  if (r.route_still_cross_zone) {
+    return '⚠ 规划路径仍穿越限飞区'
+  }
+  if (r.straight_line_cross_zone) {
+    const n = (r.crossed_zones && r.crossed_zones.length) || 0
+    return `直线穿越 ${n} 个限飞区 → 规划路径已全部绕开`
+  }
+  return '起终点直线未穿越限飞区，无需绕行'
+})
+
+function formatDetour(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '-'
+  const sign = v >= 0 ? '+' : ''
+  return `${sign}${v.toFixed(1)} m`
+}
+
 function close() {
   mapStore.closePanel()
   mapStore.cancelRoutePlanning()
@@ -297,6 +354,45 @@ function close() {
 .panel-title { font-size: 14px; font-weight: 600; }
 .close-btn { color: #fff; padding: 0; }
 .panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+/* ---------- 绕行对比块：直线 vs 规划路径 ---------- */
+.detour-box {
+  margin: 8px 0 10px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: rgba(64, 158, 255, 0.12);
+  border-left: 3px solid #409eff;
+}
+.detour-box.danger {
+  background: rgba(245, 108, 108, 0.14);
+  border-left-color: #f56c6c;
+}
+.detour-head {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 7px;
+  color: #fff;
+}
+.detour-box.danger .detour-head { color: #ffb4b4; }
+.detour-rows { display: flex; flex-direction: column; gap: 4px; }
+.detour-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.detour-row .k { color: rgba(255, 255, 255, 0.62); }
+.detour-row .v { color: #fff; font-variant-numeric: tabular-nums; }
+.detour-row .v.strong { font-weight: 600; color: #7ddc8a; }
+.detour-box.danger .detour-row .v.strong { color: #ffb4b4; }
+.detour-foot {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.16);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.82);
+}
 
 .form-section { margin-bottom: 14px; }
 

@@ -20,6 +20,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -226,5 +227,61 @@ class RouteServiceImplTest {
 
         assertEquals(50.0, service.plan(req).getAltitudeM(), 1e-9,
                 "altitude 为空时应回落到 50m，而不是拆箱 NPE");
+    }
+
+    // ============================================================
+    // 绕行对比（直线 vs 规划路径）—— 用于前端展示「A* 为避让多飞了多少」
+    // ============================================================
+
+    @Test
+    @DisplayName("直线距离与 PostGIS ::geography 同口径（球面），可用作绕行比较的基准")
+    void straightDistanceMatchesPostgisGeography() {
+        stubCommon(1, 2, path(1, 2, 3), lineString(3), 300.0);
+
+        RoutePlanResponse resp = service.plan(request());   // 起终点见 request()
+
+        // 该起终点对的 PostGIS 值：
+        //   SELECT ST_Distance(ST_SetSRID(ST_MakePoint(114.4704,37.9832),4326)::geography,
+        //                      ST_SetSRID(ST_MakePoint(114.4683,37.9842),4326)::geography);
+        //   -> 215.305 m
+        // haversine 用球面半径 6371000，与 PostGIS geography 同为球面口径，
+        // 允许 1m 内的差异；超出即说明两边口径漂移了。
+        assertEquals(215.305, resp.getStraightDistanceM(), 1.0,
+                "直线距离应与 PostGIS ::geography 一致（同为球面口径）");
+    }
+
+    @Test
+    @DisplayName("绕行增量 = 规划距离 - 直线距离；绕行比例同步给出")
+    void detourIsDifferenceBetweenPathAndStraightLine() {
+        stubCommon(1, 2, path(1, 2, 3), lineString(3), 365.3);
+
+        RoutePlanResponse resp = service.plan(request());
+
+        double straight = resp.getStraightDistanceM();
+        assertEquals(365.3 - straight, resp.getDetourM(), 1e-6,
+                "绕行增量应为两距离之差");
+        assertEquals(resp.getDetourM() / straight, resp.getDetourRatio(), 1e-9,
+                "绕行比例应为 增量 / 直线距离");
+        assertTrue(resp.getDetourM() > 100, "本例绕行增量应明显大于 100m");
+    }
+
+    @Test
+    @DisplayName("起终点几乎重合时绕行比例置 null，避免出现无意义的巨大比值")
+    void detourRatioIsNullWhenStraightDistanceIsNegligible() {
+        stubCommon(1, 2, path(1, 2, 3), lineString(3), 120.0);
+        RoutePlanRequest req = request();
+        // 注意：request() 的终点纬度比起点高 0.001 度（约 111m），必须一并抹平，
+        // 否则测到的是那 111m 而不是我们要构造的"起终点几乎重合"。
+        req.setEndLat(req.getStartLat());
+        // 经度只差 0.00001 度；该纬度处约 0.8785m（PostGIS ::geography 实测值）
+        req.setEndLng(req.getStartLng() + 0.00001);
+
+        RoutePlanResponse resp = service.plan(req);
+
+        assertEquals(0.8785, resp.getStraightDistanceM(), 0.01,
+                "经度差 0.00001 度在该纬度应约 0.88m");
+        assertTrue(resp.getStraightDistanceM() < 1.0, "直线距离应小于 1m");
+        assertNull(resp.getDetourRatio(), "直线距离过小时不应给出绕行比例");
+        assertTrue(resp.getDetourM() > 0, "绕行增量本身仍可计算");
     }
 }

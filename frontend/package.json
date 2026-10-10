@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check": "npm run lint && npm run build",
-    "verify": "node scripts/verify-frontend.mjs src/main.js src/App.vue src/stores/map.js src/utils/cesium.js src/utils/basemap.js src/utils/measure.js src/components/CesiumViewer.vue src/components/BuildingPopup.vue",
+    "verify": "node scripts/verify-frontend.mjs src/main.js src/App.vue src/stores/map.js src/utils/cesium.js src/utils/basemap.js src/utils/measure.js src/utils/layout.js src/components/CesiumViewer.vue src/components/BuildingPopup.vue src/components/RoutePlanPanel.vue src/components/LayerPanel.vue src/components/OrderPanel.vue src/components/DronePanel.vue",
     "verify:cesium": "node scripts/verify-cesium-reactivity.mjs",
     "verify:behavior": "node scripts/verify-cesium-behavior.mjs",
     "verify:outlines": "node scripts/verify-building-outlines.mjs",
