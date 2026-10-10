@@ -9,8 +9,9 @@
 | | |
 |---|---|
 | **源码仓库** | <https://github.com/aceword177/webgis-campus-digitaltwin> |
+| **技术展示页** | [`docs/showcase/index.html`](docs/showcase/index.html) —— 空间数据生产链路、坐标系核查、A* 三级避让、量算精度、质量保障，<br>每个数字都标注了可复现的验证方法 |
 | **作品集（功能截图与技术要点）** | 随简历投递的 `WebGIS开发作品集.pdf` |
-| **说明** | 演示环境按需启动；本地一键运行见 [快速启动](#快速启动) |
+| **说明** | 项目需 PostgreSQL + PostGIS + pgRouting 与 Spring Boot 后端方可运行；本地启动见 [快速启动](#快速启动) |
 
 ## 技术栈
 
