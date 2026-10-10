@@ -133,10 +133,10 @@ for (const [oldT, newT] of evalMap) {
   }
 }
 
-// ---------- 4. 作品集栏：改为附件说明 + 源码仓库 ----------
-// 仓库地址已填真实地址。在线演示行当前无地址，故删除；
-// 将来部署后如需加回，在此追加一行即可：
-//   + portPara('在线演示：https://你的演示地址')
+// ---------- 4. 作品集栏：改为附件说明 + 源码仓库 + 技术展示 ----------
+// 源码仓库与技术展示页均已填真实地址（技术展示页部署在 GitHub Pages）。
+// 将来录制了演示视频，在此追加一行即可：
+//   + portPara('演示视频：https://你的视频地址')
 const portfolioTailPr =
   '<w:pPr><w:spacing w:before="0" w:after="0" w:line="377" w:lineRule="exact"/><w:textAlignment w:val="center"/></w:pPr>'
 const portfolioRunRpr =
@@ -153,6 +153,7 @@ swap(
   '<w:t>https://www.kdocs.cn/l/ch9EEKEdioaW</w:t>',
   '<w:t xml:space="preserve">《WebGIS开发作品集.pdf》（功能截图与技术要点）</w:t>'
   + portPara('源码仓库：https://github.com/aceword177/webgis-campus-digitaltwin')
+  + portPara('技术展示：https://aceword177.github.io/webgis-campus-digitaltwin/showcase/')
 )
 
 // ---------- 4b. 压缩段落留白：把末尾内容收回第 2 页 ----------

@@ -98,7 +98,8 @@ const html = `<!doctype html>
     <b>基准处理</b>：原始数据按高德 GCJ-02 基准采集（.prj 标注 WGS84 与实际不符），底图选同&nbsp;基准高德影像零平移对齐；实测与 WGS84 底图偏差约 109m
   </div>
   <div class="stack" style="margin-top:2mm">
-    <b>源码仓库</b>：https://github.com/aceword177/webgis-campus-digitaltwin
+    <b>源码仓库</b>：https://github.com/aceword177/webgis-campus-digitaltwin<br>
+    <b>技术展示</b>：https://aceword177.github.io/webgis-campus-digitaltwin/showcase/
   </div>
   <div class="meta">遥感解译与空间数据处理基础 &nbsp;·&nbsp; 全栈自研 &nbsp;·&nbsp; 完整业务闭环可复现</div>
 </div>
