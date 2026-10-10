@@ -52,15 +52,15 @@ const CAMPUS = {
 // [来源] 导航网格计数
 const NAV = { node: 3100, edge: 10693 }
 
-// [来源] backend/src/test/**/*.java 的 @Test 计数
+// [来源] backend/src/test/**/*.java 的 @Test 计数（新增绕行对比 3 个用例后为 51）
 const TESTS = [
   { file: 'OrderServiceImplTest', n: 18 },
-  { file: 'RouteServiceImplTest', n: 10 },
+  { file: 'RouteServiceImplTest', n: 13 },
   { file: 'GeoMathTest', n: 8 },
   { file: 'GeoJsonSupportTest', n: 6 },
   { file: 'SpatialServiceImplTest', n: 6 },
 ]
-const TOTAL_TESTS = TESTS.reduce((s, t) => s + t.n, 0) // 48
+const TOTAL_TESTS = TESTS.reduce((s, t) => s + t.n, 0) // 51
 
 // [来源] frontend/scripts/verify-*.mjs
 const VERIFY_SCRIPTS = [
@@ -325,6 +325,30 @@ JOIN no_fly_zone nfz ON ST_Intersects(fr.route_geom, nfz.geom);</pre>
 <p>
   另提供<strong>穿越检测接口</strong>：对起终点直线与规划路径分别做 <code>ST_Intersects</code> 判断，
   返回穿越的限飞区明细——既验证算法效果，也让「为什么绕行」对用户可见。
+</p>
+
+<h3>绕行代价是可量化的（实测样例）</h3>
+
+<p>
+  规划接口会同时返回<strong>直线距离</strong>与<strong>规划距离</strong>，因此「为避让多飞了多少」
+  是一个可核对的数字，而不是形容词。以下是一次实测（起终点连线穿过校园中部两栋教学楼）：
+</p>
+
+<pre><span class="cmt"># POST /api/route/plan  （起终点连线穿越 2 个限飞区）</span>
+  规划距离  <span class="ok">294.55 m</span>
+  直线距离  <span class="ok">122.31 m</span>
+  绕行增量  <span class="ok">+172.24 m</span>   （+141%）
+  途径点    19
+  预计时长  59 s
+
+  直线穿越限飞区  <span class="ok">true</span>   ← 4号教学楼、3号教学楼（strict）
+  规划路径仍穿越  <span class="ok">false</span>
+  成功避让        <span class="ok">true</span></pre>
+
+<p>
+  直线距离与规划距离采用<strong>同一球面口径</strong>（前者为 haversine，后者为 PostGIS
+  <code>ST_Length(...::geography)</code>），因此两者可以直接相减 —— 这一点有单元测试锁住，
+  避免两种口径混算导致绕行增量失真。
 </p>
 
 <h2><span class="n">04</span>量算精度：从 ${AREA_FIX.before} 偏差到 ${AREA_FIX.after}</h2>
