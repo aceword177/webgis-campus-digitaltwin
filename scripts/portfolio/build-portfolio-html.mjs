@@ -113,7 +113,7 @@ ${PAGE}
       <td><span class="n">8</span><span class="l">校园空间图层</span></td>
       <td><span class="n">15m</span><span class="l">导航网格分辨率</span></td>
       <td><span class="n">32</span><span class="l">REST 接口</span></td>
-      <td><span class="n">48</span><span class="l">后端单元测试</span></td>
+      <td><span class="n">51</span><span class="l">后端单元测试</span></td>
     </tr>
   </table>
 
@@ -249,7 +249,7 @@ ${PAGE}
 
   <h3>测试与规范</h3>
   <ul>
-    <li><b>后端 48 个单元测试</b>：覆盖距离口径、GeoJSON 解析、订单状态机、航线规划、表名白名单（SQL 注入防护）等关键路径。</li>
+    <li><b>后端 51 个单元测试</b>：覆盖距离口径、GeoJSON 解析、订单状态机、航线规划、表名白名单（SQL 注入防护）等关键路径。</li>
     <li><b>前端校验脚本</b>：Cesium 响应式、渲染行为、建筑描边、API 用法、弹窗定位等专项校验。</li>
     <li><b>配置分环境</b>：本地 profile 零配置即可启动；生产 profile 强制由环境变量提供数据库连接，启动阶段即校验连通性（fail-fast），避免"启动成功但接口全 500"。</li>
     <li><b>破坏性操作默认关闭</b>：历史脏数据清理会改写业务数据，因此默认不执行，需显式开启。</li>

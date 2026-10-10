@@ -215,7 +215,8 @@ mvn test
 > `MockitoException: Could not modify all classes ... IllegalStateException: Compiled by older versions of scalac`。
 > JDK 17 正是 `pom.xml` 声明的 `java.version`。（编译本身用 JDK 25 也能过，仅跑测试受限。）
 
-当前共 **48 个单元测试**：距离口径、GeoJSON 解析、订单状态机、航线规划、表名白名单（SQL 注入防护）。
+当前共 **51 个单元测试**：距离口径、GeoJSON 解析、订单状态机、航线规划、表名白名单（SQL 注入防护）、
+绕行增量口径（直线距离与 PostGIS `::geography` 同口径，保证可直接相减）。
 
 ##### Profile 说明
 
