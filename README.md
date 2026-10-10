@@ -137,8 +137,7 @@ webgis-campus-digitaltwin-mvp/
 ├── docs/                       # 项目文档
 │   ├── api.md                  # 接口文档
 │   ├── sql/                    # 建表/种子/限飞区/验证/导航网格脚本
-│   ├── debug-archive/          # 历史调试产物归档
-│   └── superpowers/            # 设计文档与实施计划
+│   └── showcase/               # 技术展示页（在线展示入口）
 └── README.md
 ```
 
