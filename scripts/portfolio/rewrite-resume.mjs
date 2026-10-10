@@ -133,9 +133,10 @@ for (const [oldT, newT] of evalMap) {
   }
 }
 
-// ---------- 4. 作品集栏：改为附件说明 + 源码仓库 / 在线演示 ----------
-// ⚠️ 投递前必须把下面两个 <> 占位符替换为真实地址；没有在线演示就删掉整行。
-//    地址需由本人创建仓库并部署后提供，脚本无法代填。
+// ---------- 4. 作品集栏：改为附件说明 + 源码仓库 ----------
+// 仓库地址已填真实地址。在线演示行当前无地址，故删除；
+// 将来部署后如需加回，在此追加一行即可：
+//   + portPara('在线演示：https://你的演示地址')
 const portfolioTailPr =
   '<w:pPr><w:spacing w:before="0" w:after="0" w:line="377" w:lineRule="exact"/><w:textAlignment w:val="center"/></w:pPr>'
 const portfolioRunRpr =
@@ -151,8 +152,7 @@ swap(
   '作品集链接',
   '<w:t>https://www.kdocs.cn/l/ch9EEKEdioaW</w:t>',
   '<w:t xml:space="preserve">《WebGIS开发作品集.pdf》（功能截图与技术要点）</w:t>'
-  + portPara('源码仓库：https://github.com/&lt;你的用户名&gt;/&lt;仓库名&gt;')
-  + portPara('在线演示：https://&lt;你的演示地址&gt;')
+  + portPara('源码仓库：https://github.com/aceword177/webgis-campus-digitaltwin')
 )
 
 // ---------- 4b. 压缩段落留白：把末尾内容收回第 2 页 ----------

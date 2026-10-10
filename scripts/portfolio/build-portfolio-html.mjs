@@ -97,10 +97,8 @@ const html = `<!doctype html>
     <b>坐标系</b>：入库统一标注 WGS84（SRID 4326），14 个空间列 SRID 一致<br>
     <b>基准处理</b>：原始数据按高德 GCJ-02 基准采集（.prj 标注 WGS84 与实际不符），底图选同&nbsp;基准高德影像零平移对齐；实测与 WGS84 底图偏差约 109m
   </div>
-  <!-- ⚠️ 投递前必须替换下面两个 <> 占位符为真实地址；没有在线演示就删掉该行 -->
   <div class="stack" style="margin-top:2mm">
-    <b>源码仓库</b>：https://github.com/&lt;你的用户名&gt;/&lt;仓库名&gt;<br>
-    <b>在线演示</b>：https://&lt;你的演示地址&gt;
+    <b>源码仓库</b>：https://github.com/aceword177/webgis-campus-digitaltwin
   </div>
   <div class="meta">遥感解译与空间数据处理基础 &nbsp;·&nbsp; 全栈自研 &nbsp;·&nbsp; 完整业务闭环可复现</div>
 </div>
