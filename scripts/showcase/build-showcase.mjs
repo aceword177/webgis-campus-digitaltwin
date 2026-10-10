@@ -212,7 +212,7 @@ const html = `<!DOCTYPE html>
   <strong>${SRID.columns} 个空间列的 SRID 完全一致、无混用</strong>：
 </p>
 
-<pre><span class="cmt">-- 验证 1：声明 SRID 是否统一（geometry_columns 是 PostGIS 元数据视图）</span>
+<pre><code><span class="cmt">-- 验证 1：声明 SRID 是否统一（geometry_columns 是 PostGIS 元数据视图）</span>
 SELECT COUNT(*) AS spatial_columns,
        COUNT(DISTINCT srid) AS distinct_srid,
        string_agg(DISTINCT srid::text, ',') AS srids
@@ -459,7 +459,7 @@ flight_route / drone_nav_node / drone_nav_edge
     <tr><td>${TOTAL_TESTS} 个单元测试</td><td><code>mvn test</code>，或统计 <code>backend/src/test/</code> 中 <code>@Test</code> 次数</td></tr>
     <tr><td>${VERIFY_SCRIPTS.length} 个校验脚本</td><td>列出 <code>frontend/scripts/verify-*.mjs</code></td></tr>
     <tr><td>导航网格 ${NAV.node} / ${NAV.edge.toLocaleString('en-US')}</td><td>查询 <code>drone_nav_node</code> / <code>drone_nav_edge</code> 计数</td></tr>
-    <tr><td>109m 偏移、5.6%→&lt;0.01%</td><td>工程内 <code>docs/</code> 保留了完整推导与实测记录</td></tr>
+    <tr><td>${OFFSET.composite}m 偏移、5.6%→&lt;0.01%</td><td>工程内 <code>docs/</code> 保留了完整推导与实测记录</td></tr>
   </tbody>
 </table>
 
