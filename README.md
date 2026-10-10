@@ -153,17 +153,21 @@ webgis-campus-digitaltwin-mvp/
 
 ## 快速启动
 
-### 方式一：一键启动脚本（推荐，无需配置环境变量）
+### 方式一：一键启动脚本（推荐）
 
-项目根目录提供了两个启动脚本，自动使用 IntelliJ IDEA 自带的 JDK 25 和 Maven 3.9：
+项目根目录提供两个启动脚本（ASCII 命名，避免中文文件名在非中文环境解压/终端下出现编码问题）：
 
 ```bash
 # 启动后端（双击运行或命令行执行）
-启动后端.bat
+start-backend.bat
 
 # 启动前端（首次会自动 npm install）
-启动前端.bat
+start-frontend.bat
 ```
+
+> 后端脚本**优先使用系统已有的 `JAVA_HOME` 和 `PATH` 上的 Maven**；
+> 两者都找不到时才回退到 IntelliJ IDEA 自带的 JDK 25 / Maven 3.9
+> —— 回退路径按作者本机安装位置写死，换机器请用下面的方式二，或先配好 `JAVA_HOME` 与 Maven。
 
 ### 方式二：命令行手动启动
 

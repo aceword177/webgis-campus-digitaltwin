@@ -280,7 +280,7 @@ webgis-campus-digitaltwin-mvp/
 1. `README.md` 第 5–17 行：技术栈表与版本（注意 Cesium 钉死 1.145.0）
 2. `README.md` 第 82–130 行：项目结构
 3. `README.md` 第 132–247 行：环境要求 + 快速启动
-4. `启动后端.bat` / `启动前端.bat`（或 `start-backend.bat` / `start-frontend.bat`）
+4. `start-backend.bat` / `start-frontend.bat`（一键启动脚本，见 README「方式一」）
 5. `frontend/vite.config.js` 第 13–26 行：代理配置（为什么前端 5173 能调到后端 8080）
 
 ### 课后实践题
@@ -291,7 +291,7 @@ webgis-campus-digitaltwin-mvp/
 
 ### 参考答案 + 解析
 
-**题 1 答案要点**：三个终端/双击三件事——数据库服务 → `启动后端.bat` → `启动前端.bat`。
+**题 1 答案要点**：三个终端/双击三件事——数据库服务 → `start-backend.bat` → `start-frontend.bat`。
 - 后端成功的标志：控制台出现 `Tomcat started on port 8080` 和 `图层元数据缓存初始化完成，共 8 个图层`。
 - 前端成功的标志：终端出现 `Local: http://localhost:5173/`。
 - **解析**：`图层元数据缓存初始化完成，共 8 个图层` 这行日志来自 `SpatialServiceImpl#init`（`@PostConstruct`），说明**后端真的连上数据库了**。如果这行没出现，问题 100% 在数据库连接，不用去查前端。
@@ -4364,7 +4364,7 @@ PostgreSQL · PostGIS · pgRouting
 > **最佳姿态**：**「我做了 A、B、C，其中 X 处我参考了 Y，因为我当时遇到了 Z 问题——我把它彻底搞懂了并沉淀下来了。」**
 
 ### 验证方法
-1. **完整跑一遍演示**：`启动后端.bat` → `启动前端.bat` → 录屏 2 分钟（覆盖：三维浏览、点建筑、测量、下单、航线规划、飞行动画、统计面板）；
+1. **完整跑一遍演示**：`start-backend.bat` → `start-frontend.bat` → 录屏 2 分钟（覆盖：三维浏览、点建筑、测量、下单、航线规划、飞行动画、统计面板）；
 2. **检查作品集**：README + 3 张截图 + PDF 是否一致、截图是否清晰、有无错别字；
 3. **模拟面试**：找朋友/同学当面试官，随机问 10 个上面准备过的问题，**计时回答**。
 
@@ -4381,11 +4381,11 @@ PostgreSQL · PostGIS · pgRouting
 
 ### 项目启动
 ```powershell
-# 后端（项目根目录提供一键脚本，自动使用 IDEA 自带 JDK 25 / Maven 3.9）
-.\启动后端.bat
+# 后端（项目根目录提供一键脚本；优先用系统 JAVA_HOME / PATH 上的 Maven，未配置时回退到 IDEA 自带环境）
+.\start-backend.bat
 
 # 前端（首次会自动 npm install）
-.\启动前端.bat
+.\start-frontend.bat
 
 # 手动启动
 cd backend;  mvn spring-boot:run

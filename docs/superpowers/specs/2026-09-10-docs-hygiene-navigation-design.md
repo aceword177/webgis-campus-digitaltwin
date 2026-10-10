@@ -120,7 +120,8 @@
   - `error1.png`、`error2.png`、`error3.png`、`error4.png`、`error_screenshot.png`
   - `backend_error.log`、`backend_start.log`
 - `backend/backend.log`、`backend/backend-err.log` 一并移入归档。
-- 根目录最终仅保留：代码目录、docs、README.md、.gitignore、启动脚本（`启动后端.bat`、`启动前端.bat`、`start-backend.bat`、`start-frontend.bat`）。
+- 根目录最终仅保留：代码目录、docs、README.md、.gitignore、启动脚本（`start-backend.bat`、`start-frontend.bat`）。
+  （原同时保留中文命名的 `启动后端.bat` / `启动前端.bat`，两者功能完全重复；后续清理中已删除，仅保留 ASCII 命名的一份。）
 
 ## 4. 设计节 4：执行顺序与验证
 
