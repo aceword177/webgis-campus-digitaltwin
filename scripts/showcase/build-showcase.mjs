@@ -72,7 +72,7 @@ const VERIFY_SCRIPTS = [
   'verify-building-outlines.mjs',
 ]
 
-// [来源] docs/优化方案-2026-09-12.md 与 docs/学习日志（均有实测记录）
+// [来源] 项目实测记录：优化方案与学习日志（2026-09 轮次；原始文档已移出本仓库，未随作品集公开）
 const OFFSET = { composite: 108.6, north: -56.8, east: -92.6 }
 const AREA_FIX = { wrongEdgeA: 72, wrongEdgeB: 138, trueEdge: 100, before: '5.6%', after: '<0.01%' }
 
