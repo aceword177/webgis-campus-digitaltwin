@@ -46,3 +46,11 @@ ui-screenshot*.png
 
 # 浏览器临时 profile（前端截图脚本用，约 6.7MB，勿入库）
 .temp-edge-profile/
+
+# 过程性材料：只留本地与私有笔记仓库（webgis-campus-digitaltwin-notes），不进公开仓库
+# 2026-10-10 起，以下内容已全部迁出（曾占 docs/ 体积的 99%，其中调试图约 9.56MB）
+docs/debug-archive/
+docs/superpowers/
+docs/优化方案-*.md
+docs/bugfix-plan-*.md
+docs/学习日志-*.md
