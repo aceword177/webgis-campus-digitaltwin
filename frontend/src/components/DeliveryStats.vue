@@ -7,23 +7,25 @@
       </el-button>
     </div>
     <div class="panel-body" v-loading="loading">
-      <!-- 今日概览 -->
+      <!-- 今日概览：四个卡片取的都是 today_* 字段，标签必须都写明"今日" ——
+           否则会与下方「累计」的订单状态分布出现同名不同值（已送达 147 vs 12319）。
+           数值用 ?? 而非 || ：0 是合法值，不该显示成 "-"。 -->
       <div class="stat-grid">
         <div class="stat-card">
-          <div class="stat-value">{{ stats?.today_orders || '-' }}</div>
+          <div class="stat-value">{{ stats?.today_orders ?? '-' }}</div>
           <div class="stat-label">今日订单</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value success">{{ stats?.today_delivered || '-' }}</div>
-          <div class="stat-label">已送达</div>
+          <div class="stat-value success">{{ stats?.today_delivered ?? '-' }}</div>
+          <div class="stat-label">今日已送达</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value warning">{{ stats?.today_delivering || '-' }}</div>
-          <div class="stat-label">配送中</div>
+          <div class="stat-value warning">{{ stats?.today_delivering ?? '-' }}</div>
+          <div class="stat-label">今日配送中</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value info">{{ stats?.today_pending || '-' }}</div>
-          <div class="stat-label">待接单</div>
+          <div class="stat-value info">{{ stats?.today_pending ?? '-' }}</div>
+          <div class="stat-label">今日待接单</div>
         </div>
       </div>
 
@@ -43,9 +45,9 @@
         </div>
       </div>
 
-      <!-- 订单状态分布 -->
+      <!-- 订单状态分布（累计口径，与上方"今日"卡片区分开） -->
       <div class="status-section">
-        <div class="section-title">订单状态分布</div>
+        <div class="section-title">订单状态分布（累计）</div>
         <div class="status-row" v-for="(count, status) in stats?.order_status_count" :key="status">
           <span class="status-dot" :style="{ background: statusColor(status) }"></span>
           <span class="status-label">{{ statusLabel(status) }}</span>
