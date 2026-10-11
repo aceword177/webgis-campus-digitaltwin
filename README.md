@@ -164,9 +164,15 @@ start-backend.bat
 start-frontend.bat
 ```
 
-> 后端脚本**优先使用系统已有的 `JAVA_HOME` 和 `PATH` 上的 Maven**；
-> 两者都找不到时才回退到 IntelliJ IDEA 自带的 JDK 25 / Maven 3.9
-> —— 回退路径按作者本机安装位置写死，换机器请用下面的方式二，或先配好 `JAVA_HOME` 与 Maven。
+> 后端脚本会**自动挑一个 JDK 17+**：先看系统 `JAVA_HOME`（**主版本必须 ≥ 17** ——
+> 本机那个指向 Java 11 的会被识别并忽略），其次用 `C:\jdk-17.0.20+8`，
+> 最后回退到 IntelliJ IDEA 自带的 JBR；Maven 同理（优先 PATH 上的，否则用 IDEA 自带的）。
+>
+> **为什么必须 ≥ 17**：`pom.xml` 声明 `java.version=17`，且
+> `spring-boot-maven-plugin:3.2.5` 的 `RunMojo` 编译为 class file 61.0 ——
+> 在 Java 11 上会直接失败：`only recognizes class file versions up to 55.0`。
+>
+> 上面这些本机路径按作者环境写死，换机器请用下面的方式二，或先把 `JAVA_HOME` 配到 JDK 17+。
 
 ### 方式二：命令行手动启动
 
