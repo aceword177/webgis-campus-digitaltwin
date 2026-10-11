@@ -64,11 +64,19 @@
           <MeasureTool />
         </div>
 
-        <!-- 航线规划模式提示 -->
-        <div v-if="routePlanMode" class="plan-mode-banner">
-          <el-icon><InfoFilled /></el-icon>
-          <span>{{ routePlanMode === 'selectingStart' ? '正在选择起点 - 点击地图或在面板中选择餐厅' : '正在选择终点 - 点击地图或在面板中选择宿舍楼' }}</span>
-          <el-button size="small" type="danger" plain @click="cancelPlanning">取消</el-button>
+        <!-- 顶部常驻提示区：自动补单横幅 + 航线规划模式提示（纵向堆叠，互不遮挡） -->
+        <div class="top-banners">
+          <!-- 自动补单默认关闭 → 录屏时这条横幅不会渲染，画面保持干净 -->
+          <div v-if="autoOrder.enabled" class="auto-order-banner">
+            <el-icon><WarningFilled /></el-icon>
+            <span>自动补单已开启 · 每 30 秒自动生成订单 · 本次已生成 <b>{{ autoOrder.generated }}</b> 单</span>
+            <el-button size="small" plain @click="disableAutoOrder">关闭</el-button>
+          </div>
+          <div v-if="routePlanMode" class="plan-mode-banner">
+            <el-icon><InfoFilled /></el-icon>
+            <span>{{ routePlanMode === 'selectingStart' ? '正在选择起点 - 点击地图或在面板中选择餐厅' : '正在选择终点 - 点击地图或在面板中选择宿舍楼' }}</span>
+            <el-button size="small" type="danger" plain @click="cancelPlanning">取消</el-button>
+          </div>
         </div>
       </div>
 
@@ -82,9 +90,10 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { MapLocation, InfoFilled } from '@element-plus/icons-vue'
+import { MapLocation, InfoFilled, WarningFilled } from '@element-plus/icons-vue'
 import { storeToRefs } from 'pinia'
 import { useMapStore } from '@/stores/map'
+import { useAutoOrderStore } from '@/stores/autoOrder'
 import CesiumViewer from '@/components/CesiumViewer.vue'
 import Sidebar from '@/components/Sidebar.vue'
 import LayerPanel from '@/components/LayerPanel.vue'
@@ -101,6 +110,8 @@ import CanteenCoverageQuery from '@/components/CanteenCoverageQuery.vue'
 
 const mapStore = useMapStore()
 const { activePanel, selectedOrder, routePlanMode } = storeToRefs(mapStore)
+// 自动补单开关：与「订单管理」面板共享同一份状态
+const autoOrder = useAutoOrderStore()
 
 const cesiumViewerRef = ref(null)
 const currentTime = ref('')
@@ -109,6 +120,8 @@ let timeTimer = null
 onMounted(() => {
   updateTime()
   timeTimer = setInterval(updateTime, 1000)
+  // 顶部横幅要知道后端真实状态（默认关闭）。只读一次，不轮询。
+  autoOrder.load()
 })
 
 onBeforeUnmount(() => {
@@ -125,6 +138,11 @@ function updateTime() {
 
 function cancelPlanning() {
   mapStore.cancelRoutePlanning()
+}
+
+/** 横幅上的「关闭」：一键收手，避免开着忘了让业务数据继续涨 */
+async function disableAutoOrder() {
+  await autoOrder.setEnabled(false)
 }
 </script>
 
@@ -226,13 +244,44 @@ function cancelPlanning() {
   pointer-events: none;
 }
 
-/* 航线规划模式横幅 */
-.plan-mode-banner {
+/* 顶部常驻提示区：纵向堆叠，两条横幅互不遮挡 */
+.top-banners {
   position: absolute;
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  /* 容器本身不拦截地图点击，只有横幅本体可交互 */
+  pointer-events: none;
+}
+
+.top-banners > * {
+  pointer-events: auto;
+}
+
+/* 自动补单已开启横幅（默认关闭时不渲染，录屏画面不受影响） */
+.auto-order-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(245, 108, 108, 0.92);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.auto-order-banner b {
+  font-size: 15px;
+}
+
+/* 航线规划模式横幅 */
+.plan-mode-banner {
   display: flex;
   align-items: center;
   gap: 10px;

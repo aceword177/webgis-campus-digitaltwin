@@ -9,6 +9,7 @@ import com.campus.twin.mapper.DeliveryOrderMapper;
 import com.campus.twin.mapper.DormitoryMapper;
 import com.campus.twin.mapper.DroneMapper;
 import com.campus.twin.mapper.RestaurantMapper;
+import com.campus.twin.service.AutoOrderSwitch;
 import com.campus.twin.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,13 @@ import java.util.UUID;
  * 自动补单调度：每 30 秒检查一次
  * 对"空闲且电量充足(>30%)、且无进行中订单"的无人机自动生成随机订单并分配，
  * 使无人机配送演示持续运转（空闲→接单→飞行→送达→充电→再接单）
+ *
+ * <p><b>受 {@link AutoOrderSwitch} 控制，默认关闭</b>（初始值见 application.yml 的
+ * {@code campus.auto-order.enabled}）。关闭时本方法首行即返回，不产生任何业务数据；
+ * 需要时在前端「订单管理」面板打开开关。
+ *
+ * <p>开关<b>只控"自动生成"</b>：手动建单、自动派单、飞行动画都不受影响，
+ * 因此关闭后仍可正常演示配送闭环。
  */
 @Slf4j
 @Component
@@ -38,6 +46,7 @@ public class AutoOrderScheduler {
     private final RestaurantMapper restaurantMapper;
     private final DormitoryMapper dormitoryMapper;
     private final OrderService orderService;
+    private final AutoOrderSwitch autoOrderSwitch;
 
     /** 全局自动订单上限（待处理 + 配送中订单总数），10 架无人机下允许更多并发在飞 */
     private static final int MAX_AUTO_ORDERS = 8;
@@ -64,6 +73,10 @@ public class AutoOrderScheduler {
 
     @Scheduled(fixedDelay = 30000)
     public void autoGenerateOrders() {
+        // 总开关关闭时直接返回：不查库、不写库，保证"默认关闭"下零副作用
+        if (!autoOrderSwitch.isEnabled()) {
+            return;
+        }
         try {
             // 全局上限控制：待处理 + 配送中订单数达到上限则不再生成
             long active = orderMapper.selectCount(new LambdaQueryWrapper<DeliveryOrder>()
@@ -117,6 +130,7 @@ public class AutoOrderScheduler {
                 // 自动分配
                 try {
                     orderService.assignDrone(order.getId(), drone.getId());
+                    autoOrderSwitch.recordGenerated();
                     log.info("自动生成订单并分配: orderNo={}, 无人机={}, 餐厅={}, 宿舍楼={}, 金额={}元",
                             order.getOrderNo(), drone.getDroneNo(), restaurant.getName(),
                             dormitory.getName(), order.getAmount());

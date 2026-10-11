@@ -7,6 +7,18 @@
       </el-button>
     </div>
 
+    <!-- 自动补单开关（后端默认关闭；只有想要"系统很活跃"的画面时才打开） -->
+    <div class="auto-order-bar">
+      <span class="auto-order-label">自动补单</span>
+      <el-switch
+        :model-value="autoOrder.enabled"
+        :loading="autoOrder.loading"
+        size="small"
+        @change="onAutoOrderChange"
+      />
+      <span class="auto-order-state">{{ autoOrder.enabled ? '已开启（每 30 秒一单）' : '默认关闭' }}</span>
+    </div>
+
     <!-- 自动派送新订单提示条 -->
     <div v-if="orderNotify" class="order-notify">
       <div class="notify-title">自动派送新订单 {{ orderNotify.orderNo }}</div>
@@ -88,10 +100,12 @@ import { getOrders, createOrder } from '@/api/order'
 import { getRestaurants } from '@/api/restaurant'
 import { getGeoJson } from '@/api/spatial'
 import { useMapStore } from '@/stores/map'
+import { useAutoOrderStore } from '@/stores/autoOrder'
 import { ORDER_STATUS_LABELS } from '@/utils/cesium'
 
 const mapStore = useMapStore()
 const selectedOrder = computed(() => mapStore.selectedOrder)
+const autoOrder = useAutoOrderStore()
 
 const loading = ref(false)
 const creating = ref(false)
@@ -114,6 +128,8 @@ const orderNotify = ref(null)
 let notifyTimer = null
 
 onMounted(async () => {
+  // 开关状态一般由 App.vue 启动时读好；这里兜底（例如直接刷新在订单面板的场景）
+  if (!autoOrder.ready) await autoOrder.load()
   await Promise.all([loadOrders(), loadRestaurants(), loadDormitories()])
   // 每 10 秒静默刷新，实时同步自动送达/自动补单的状态变化
   refreshTimer = setInterval(() => {
@@ -177,6 +193,14 @@ async function loadDormitories() {
 
 function selectOrder(order) {
   mapStore.selectOrder(order)
+}
+
+/** 切换自动补单：以后端返回为准，不做本地乐观更新（避免前后端状态不一致） */
+async function onAutoOrderChange(next) {
+  const ok = await autoOrder.setEnabled(!!next)
+  if (ok) {
+    ElMessage.success(next ? '自动补单已开启：每 30 秒自动生成一单' : '自动补单已关闭')
+  }
 }
 
 function statusLabel(status) {
@@ -246,6 +270,19 @@ async function submitCreate() {
 }
 
 .panel-title { font-size: 14px; font-weight: 600; }
+
+/* 自动补单开关条 */
+.auto-order-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.auto-order-label { color: rgba(255, 255, 255, 0.85); }
+.auto-order-state { color: rgba(255, 255, 255, 0.45); }
 
 .filter-bar {
   padding: 8px 12px;

@@ -250,6 +250,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=prod
 | 开关 | 默认 | 说明 |
 |---|---|---|
 | `CAMPUS_CLEANUP_ENABLED`（即 `campus.cleanup.enabled`） | `false` | 启动时是否执行历史脏数据清理。该操作会**改写业务数据**（把超期配送中订单置为 cancelled、修正航线与无人机状态、把空闲无人机挪回食堂），属破坏性操作，故默认关闭 |
+| `CAMPUS_AUTO_ORDER_ENABLED`（即 `campus.auto-order.enabled`） | `false` | 自动补单调度（`AutoOrderScheduler`）的**初始**状态：开启后每 30 秒为"空闲且电量 >30%"的无人机自动生成订单并派单（实测约 1,100 单/天）。默认关闭，避免录屏/联调时业务数据无感增长；也可在「订单管理」面板**运行时**开关（状态不持久化，重启回到此默认值） |
 
 #### 3. 启动前端
 
@@ -290,7 +291,7 @@ npm run check
 - **定位校园**：一键飞行到校园中心
 
 ### 无人机外卖配送
-- **订单闭环**：手动下单或系统自动补单（每 30 秒，全局在飞上限 8 单），状态机 pending → delivering → delivered / cancelled
+- **订单闭环**：手动下单或系统自动补单（每 30 秒，全局在飞上限 8 单；**自动补单默认关闭，可在「订单管理」面板运行时开关**），状态机 pending → delivering → delivered / cancelled
 - **A\* 路径规划**：基于 pgRouting 15m 导航网格，`pgr_astar` 求最短路径，自动绕行限飞区
 - **限飞区边级避让**：节点带 5m 安全缓冲判定；跨越限飞区的网格边直接过滤；靠近限飞区的边有成本惩罚（防贴边飞行）
 - **真实穿越检测**：起终点直线是否穿越限飞区、规划路径是否仍穿越，结果实时展示
@@ -341,7 +342,7 @@ npm run check
 2. **pgRouting A\* 路径规划**：15m 分辨率导航网格 + 8 邻域连接，`pgr_astar` 求最短路径
 3. **限飞区边级避让**：节点安全缓冲判定 + 线段级过滤（跨区不建边）+ 靠近限飞区的边成本惩罚（软约束防贴边）
 4. **真实穿越检测**：起终点直线与规划路径双重 ST_Intersects 检测，返回穿越限飞区明细
-5. **配送业务闭环**：自动补单 → A* 规划 → 位置实时推进 → 到达自动确认 → 充电/续派自循环
+5. **配送业务闭环**：自动补单（默认关闭，可运行时开关）→ A* 规划 → 位置实时推进 → 到达自动确认 → 充电/续派自循环
 6. **MVT 矢量瓦片**：PostGIS 原生 ST_AsMVT 生成 protobuf 瓦片，Cesium 直接加载，减少数据传输
 7. **Cesium 白模拉伸**：GeoJsonDataSource + extrudedHeight，按建筑高度拉伸三维模型
 8. **前后端分离**：Vue3 + Spring Boot REST API，Vite 代理解决跨域；全局 SNAKE_CASE 序列化

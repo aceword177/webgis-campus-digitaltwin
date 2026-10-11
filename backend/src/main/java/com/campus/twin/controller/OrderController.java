@@ -2,11 +2,14 @@ package com.campus.twin.controller;
 
 import com.campus.twin.common.ResourceNotFoundException;
 import com.campus.twin.common.Result;
+import com.campus.twin.dto.AutoOrderStatusVO;
+import com.campus.twin.dto.AutoOrderSwitchRequest;
 import com.campus.twin.dto.DeliveryStatsVO;
 import com.campus.twin.dto.OrderCreateRequest;
 import com.campus.twin.dto.OrderDetailVO;
 import com.campus.twin.dto.OrderListVO;
 import com.campus.twin.entity.DeliveryOrder;
+import com.campus.twin.service.AutoOrderSwitch;
 import com.campus.twin.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +26,7 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final AutoOrderSwitch autoOrderSwitch;
 
     /** 单页最大条数上限：防止 ?size=1000000 让服务端一次性物化百万行 */
     private static final int MAX_PAGE_SIZE = 200;
@@ -81,5 +85,29 @@ public class OrderController {
     @GetMapping("/stats")
     public Result<DeliveryStatsVO> getStats() {
         return Result.success(orderService.getDeliveryStats());
+    }
+
+    // ===== 自动补单开关 =====
+    // 路径刻意用两段（/auto-order/status），避免与上面的 @GetMapping("/{id}") 抢路由
+    // —— 单段的 /auto-order 会被当成 {id} 去转 Integer，直接 400。
+
+    @Operation(summary = "查询自动补单开关状态（默认关闭）")
+    @GetMapping("/auto-order/status")
+    public Result<AutoOrderStatusVO> getAutoOrderStatus() {
+        return Result.success(currentAutoOrderStatus());
+    }
+
+    @Operation(summary = "开关自动补单（开启后每 30 秒自动生成订单并派单）")
+    @PutMapping("/auto-order/status")
+    public Result<AutoOrderStatusVO> updateAutoOrderStatus(@Valid @RequestBody AutoOrderSwitchRequest request) {
+        autoOrderSwitch.switchTo(Boolean.TRUE.equals(request.getEnabled()));
+        return Result.success(currentAutoOrderStatus());
+    }
+
+    private AutoOrderStatusVO currentAutoOrderStatus() {
+        return AutoOrderStatusVO.builder()
+                .enabled(autoOrderSwitch.isEnabled())
+                .generated(autoOrderSwitch.getGenerated())
+                .build();
     }
 }
