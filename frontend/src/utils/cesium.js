@@ -128,6 +128,19 @@ export async function loadBuildings(viewer, features, buildingType, name) {
 
   // 拉伸建筑为白模
   const entities = dataSource.entities.values
+
+  // 业务 id → 原始数据行（含 geom 字符串），供下面取形心用。
+  //
+  // 用 id 绑定，而不是靠数组下标对齐（entities[i] 配 features[i]）：
+  // 形心必须挂到「它自己那栋楼」上，而 id 是数据自带的稳定键，
+  // 不依赖「Cesium 产出的 entity 顺序/数量恰好与输入 features 一致」。
+  //
+  // 说明：实测 Cesium 1.145 对非法或不支持的几何是**直接抛错**（entity 数
+  // 与 feature 数一致，不会少），所以下标错位目前复现不出来——这里是
+  // 防御性写法，不是已复现的故障。若哪天加载改成「跳过坏数据」的策略，
+  // 下标对齐就会静默错位，届时这段无需改动。
+  const featureById = new Map((features || []).map(f => [String(f.id), f]))
+
   for (const entity of entities) {
     const height = entity.properties?.height?.getValue() || 3
     const extrudedHeight = height * FLOOR_HEIGHT
@@ -143,8 +156,16 @@ export async function loadBuildings(viewer, features, buildingType, name) {
     entity._tableName = getTableNameByType(buildingType)
 
     // 预存形心经纬度：点击时若射线求交失败（无地形/无深度纹理），
-    // 用形心兜底反查 pointQuery，保证一定能命中建筑自身轮廓
-    const centroid = getFeatureCentroid(entity.properties?.geom?.getValue())
+    // 用形心兜底反查 pointQuery，保证一定能命中建筑自身轮廓。
+    // 消费方：CesiumViewer.vue#selectBuildingByEntity（L813-821）。
+    //
+    // ⚠️ 几何必须从**原始 features 行**取，不能读 entity.properties.geom：
+    // toGeoJsonFeatureCollection（L99）已把 properties.geom 置为 undefined
+    // （几何只该待在 geometry 里），而 Cesium 的 PropertyBag 对 undefined 值
+    // 直接跳过赋值（见 PropertyBag#addProperty），所以 entity.properties.geom
+    // 恒为 undefined —— 早先这里读它，导致形心从未真正写入，兜底一直失效。
+    const raw = featureById.get(String(entity.properties?.id?.getValue()))
+    const centroid = getFeatureCentroid(raw?.geom)
     if (centroid) {
       entity._centroidLng = centroid[0]
       entity._centroidLat = centroid[1]
