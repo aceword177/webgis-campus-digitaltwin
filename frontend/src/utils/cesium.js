@@ -135,11 +135,15 @@ export async function loadBuildings(viewer, features, buildingType, name) {
   // 形心必须挂到「它自己那栋楼」上，而 id 是数据自带的稳定键，
   // 不依赖「Cesium 产出的 entity 顺序/数量恰好与输入 features 一致」。
   //
-  // 说明：实测 Cesium 1.145 对非法或不支持的几何是**直接抛错**（entity 数
-  // 与 feature 数一致，不会少），所以下标错位目前复现不出来——这里是
-  // 防御性写法，不是已复现的故障。若哪天加载改成「跳过坏数据」的策略，
-  // 下标对齐就会静默错位，届时这段无需改动。
-  const featureById = new Map((features || []).map(f => [String(f.id), f]))
+  // ⚠️ 必须滤掉没有 id 的行：String(undefined) 会得到字符串 "undefined"，
+  // 多栋缺 id 的楼会撞同一个 Map 键、共用最后一行，形心静默挂到别的楼上
+  // （已实测复现）。滤掉之后缺 id 的楼取不到形心，降级为「不做兜底」——
+  // 拿不到兜底，好过拿到别人的坐标。
+  const featureById = new Map(
+    (features || [])
+      .filter(f => f && f.id != null)
+      .map(f => [String(f.id), f])
+  )
 
   for (const entity of entities) {
     const height = entity.properties?.height?.getValue() || 3
