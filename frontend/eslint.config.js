@@ -67,5 +67,17 @@ export default [
       'vue/no-use-v-if-with-v-for': 'error',
       'vue/no-parsing-error': 'error'
     }
+  },
+
+  // 验证/工具脚本（scripts/）跑在 Node 里，会用到 process、node:fs 等。
+  // 只对本目录放开 node 全局，**不要**并进上面的公共块——
+  // 否则 src/ 里的浏览器代码误用 process 时，no-undef 就抓不到了。
+  {
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
+    }
   }
 ]

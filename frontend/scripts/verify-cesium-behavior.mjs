@@ -46,7 +46,6 @@ console.log('【1】回归：isLoading 的类型（写错会让点击静默失�
   // 反面教材：把它当方法调用必须抛 TypeError，这正是当初的 bug
   let threw = false
   try {
-    // eslint-disable-next-line no-unused-expressions
     gds.isLoading?.()
   } catch (e) {
     threw = e instanceof TypeError
