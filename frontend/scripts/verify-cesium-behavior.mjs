@@ -7,10 +7,15 @@
  * 回调是 async，异常变成未处理的 Promise rejection，**整个点击处理器静默中断，
  * 弹窗再也不出现**，且控制台不会亮红字。
  *
+ * 另一处同类的「静默失效」回归见【6】：`loadBuildings` 预存形心时读了
+ * `entity.properties.geom`，而该字段正是 `toGeoJsonFeatureCollection` 主动置为
+ * `undefined` 的，导致形心从未写入、点击兜底长期失效——同样不报错、不崩溃。
+ *
  * 用法：node scripts/verify-cesium-behavior.mjs
  */
 import * as Cesium from 'cesium'
 import { markRaw } from 'vue'
+import { loadBuildings, getFeatureCentroid, toGeoJsonFeatureCollection } from '../src/utils/cesium.js'
 
 let failures = 0
 const fail = (m) => { failures++; console.log(`  ✗ ${m}`) }
@@ -164,6 +169,89 @@ console.log('\n【5】DataSourceCollection.add / getByName 契约（描边注册
   }
   if (Array.isArray(miss) && miss.length === 0) pass('未命中返回空数组，?.length 判断可容忍')
   else fail('未命中返回值不符合预期')
+}
+
+// ---------- 6. 形心兜底：loadBuildings 必须真的把形心存进 entity ----------
+// 背景：这里曾读 entity.properties.geom，而该字段正是 toGeoJsonFeatureCollection
+// 主动置为 undefined 的，于是形心从未写入；消费方 CesiumViewer.vue#selectBuildingByEntity
+// 读不到就静默降级（三级射线兜底全失败时不发 pointQuery，弹窗丢 area_sqm / perimeter_m）。
+// 全程不抛异常、控制台无红字，只能靠本段守住。
+console.log('\n【6】形心兜底：loadBuildings 是否真的把形心存进 entity')
+{
+  // 无需 WebGL：loadBuildings 只用到 viewer.dataSources.add()
+  const fakeViewer = () => ({ dataSources: new Cesium.DataSourceCollection() })
+  const poly = (w, s) => JSON.stringify({
+    type: 'Polygon',
+    coordinates: [[[w, s], [w + 0.01, s], [w + 0.01, s + 0.01], [w, s]]]
+  })
+  const centroidOf = (e) => [e._centroidLng, e._centroidLat]
+  const same = (a, b) => a[0] === b[0] && a[1] === b[1]
+
+  // 6.1 契约：几何只待在 geometry 里，properties.geom 必须是 undefined
+  const fc = toGeoJsonFeatureCollection([{ id: 1, name: '6号教学楼', height: 6, geom: poly(114.4673, 37.9841) }])
+  const feature = fc.features[0]
+  if (feature.geometry?.type === 'Polygon') pass('geometry 里带着完好的几何')
+  else fail('geometry 缺失或类型不对 —— 白模生不出来')
+  if (feature.properties.geom === undefined) {
+    pass('properties.geom 为 undefined（这正是「读它必得 undefined」的根因）')
+  } else {
+    fail(`properties.geom 形态变了（${JSON.stringify(feature.properties.geom)}）—— 请复核 loadBuildings 的几何来源`)
+  }
+
+  // 6.2 回归：形心必须真的写入，且值等于原始几何算出的形心
+  const rows = [{ id: 1, name: '6号教学楼', height: 6, geom: poly(114.4673, 37.9841) }]
+  const ds = await loadBuildings(fakeViewer(), rows, 'teaching', 'teaching')
+  const entity = ds.entities.values[0]
+  const expected = getFeatureCentroid(rows[0].geom)
+  console.log(`      _centroidLng/Lat = ${centroidOf(entity).join(' / ')}（期望 ${expected.join(' / ')}）`)
+  if (entity && same(centroidOf(entity), expected)) {
+    pass('形心已写入且与原始几何一致 —— 消费方兜底可用')
+  } else {
+    fail('形心未写入或值不对 —— 点击兜底会静默失效（弹窗丢 area_sqm / perimeter_m）')
+  }
+  if (entity?.properties?.height?.getValue() === 6) pass('白模高度仍可读（height=6）')
+  else fail('height 读不到 —— 白模拉伸会退化成默认层数')
+
+  // 6.3 多栋楼：形心必须各自对应，不能串号
+  const multi = [
+    { id: 11, name: 'A', height: 3, geom: poly(114.10, 37.10) },
+    { id: 22, name: 'B', height: 4, geom: poly(114.30, 37.30) },
+    { id: 33, name: 'C', height: 5, geom: poly(114.50, 37.50) }
+  ]
+  const dsMulti = await loadBuildings(fakeViewer(), multi, 'teaching', 'teaching')
+  let crossed = 0
+  for (const row of multi) {
+    const e = dsMulti.entities.values.find((x) => String(x.properties?.id?.getValue()) === String(row.id))
+    if (!e) { fail(`id=${row.id} 没找到对应 entity`); crossed++; continue }
+    const exp = getFeatureCentroid(row.geom)
+    if (!same(centroidOf(e), exp)) {
+      fail(`id=${row.id} 形心串号：得到 ${centroidOf(e).join('/')}，应为 ${exp.join('/')}`)
+      crossed++
+    }
+  }
+  if (!crossed) pass(`${multi.length} 栋楼的形心各自对应，无串号`)
+
+  // 6.4 缺 id 的行必须安全降级：String(undefined) 撞键曾让 A 拿到 B 的形心
+  const noId = [
+    { name: 'A', height: 3, geom: poly(114.10, 37.10) },
+    { name: 'B', height: 4, geom: poly(114.50, 37.50) }
+  ]
+  const dsNoId = await loadBuildings(fakeViewer(), noId, 'teaching', 'teaching')
+  console.log(`      缺 id 各实体形心: ${dsNoId.entities.values.map((e) => `${e.properties?.name?.getValue()}=${e._centroidLng}`).join('  ')}`)
+  if (dsNoId.entities.values.some((e) => e._centroidLng !== undefined)) {
+    fail('缺 id 时仍写入形心 —— 会串号（拿到别人的坐标，比拿不到更糟）')
+  } else {
+    pass('缺 id 时形心一律留空 —— 拿不到兜底，好过拿到错的坐标')
+  }
+
+  // 6.5 边界：空输入不应抛异常
+  try {
+    const dsEmpty = await loadBuildings(fakeViewer(), [], 'teaching', 'empty')
+    if (dsEmpty.entities.values.length === 0) pass('空 features 正常返回空图层')
+    else fail('空 features 却生成了实体')
+  } catch (e) {
+    fail(`空 features 抛异常：${e.message}`)
+  }
 }
 
 console.log('')
