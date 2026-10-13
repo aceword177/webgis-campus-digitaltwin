@@ -11,6 +11,12 @@
  *   5. height 字段可用（拉伸高度依赖它）
  *
  * 需要后端在 localhost:8080 运行。用法：node scripts/verify-building-outlines.mjs
+ *
+ * 这是本目录里唯一的「集成校验」（要真实数据），其余 5 个都是离线可跑的。
+ * 后端连不上时**跳过而不是失败**：以前它会把「后端没启动」报成「失败 3 项」，
+ * 看起来像代码回归，导致 `npm run verify:all` 在离线环境下必然红——
+ * 一个总是红的门等于没有门。注意区分：只有「连不上」才跳过，
+ * 后端响应了却报错仍按真失败处理，不掩盖问题。
  */
 import * as Cesium from 'cesium'
 
@@ -19,6 +25,21 @@ const TABLES = ['teaching_building', 'dormitory', 'other_buildings']
 
 let failures = 0
 const fail = (msg) => { failures++; console.log(`  ✗ ${msg}`) }
+
+/**
+ * 后端可用性预检。
+ * @returns {Promise<{kind:'down'|'up', detail:string}>}
+ *   down = TCP/网络层连不上（跳过）；up = 有 HTTP 响应（哪怕是错误码，都交给下面的
+ *   逐表校验去判真失败）。
+ */
+async function probeBackend() {
+  try {
+    await fetch(`${API}/${TABLES[0]}`, { signal: AbortSignal.timeout(3000) })
+    return { kind: 'up', detail: '' }
+  } catch (e) {
+    return { kind: 'down', detail: e.message }
+  }
+}
 
 /**
  * 与 utils/cesium.js#addBuildingOutlines 完全一致的环提取逻辑。
@@ -42,6 +63,18 @@ function extractOuterRings(geom) {
 }
 
 console.log('校验建筑描边几何提取（数据来自后端真实表）\n')
+
+const probe = await probeBackend()
+if (probe.kind === 'down') {
+  console.log(`  ⚠️  跳过：连不上后端 localhost:8080（${probe.detail}）`)
+  console.log('')
+  console.log('      本脚本需要真实数据，属「集成校验」，不计入离线回归。')
+  console.log('      要做这次校验，先启动后端（项目根目录 start-backend.bat），再重跑：')
+  console.log('          node scripts/verify-building-outlines.mjs')
+  console.log('')
+  console.log('      离线可跑的 5 个脚本：npm run verify:offline')
+  process.exit(0)
+}
 
 for (const table of TABLES) {
   let rows

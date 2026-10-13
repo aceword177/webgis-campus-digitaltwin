@@ -17,7 +17,8 @@
     "verify:outlines": "node scripts/verify-building-outlines.mjs",
     "verify:api": "node scripts/verify-cesium-api-usage.mjs",
     "verify:popup": "node scripts/verify-popup-position.mjs",
-    "verify:all": "npm run verify && npm run verify:cesium && npm run verify:behavior && npm run verify:outlines && npm run verify:api && npm run verify:popup"
+    "verify:offline": "npm run verify && npm run verify:cesium && npm run verify:behavior && npm run verify:api && npm run verify:popup",
+    "verify:all": "npm run verify:offline && npm run verify:outlines"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
