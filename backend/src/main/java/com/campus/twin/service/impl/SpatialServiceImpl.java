@@ -58,21 +58,39 @@ public class SpatialServiceImpl implements SpatialService {
     @PostConstruct
     public void init() {
         layerCache = new ArrayList<>();
+        int failed = 0;
         for (String table : ALLOWED_TABLES) {
+            Integer count = null;
             try {
-                Integer count = spatialQueryMapper.selectCount(table);
-                layerCache.add(LayerMeta.builder()
-                        .tableName(table)
-                        .label(TABLE_LABELS.getOrDefault(table, table))
-                        .geometryType(LINE_TABLES.contains(table) ? "line" : "polygon")
-                        .count(count)
-                        .hasHeight(TABLES_WITH_HEIGHT.contains(table))
-                        .build());
+                count = spatialQueryMapper.selectCount(table);
             } catch (Exception e) {
-                log.warn("查询表 {} 记录数失败: {}", table, e.getMessage());
+                failed++;
+                // 用 toString() 而非 getMessage()：包装异常（如 CannotGetJdbcConnectionException）
+                // 的 getMessage() 常为 null，会打出「失败: null」这种零信息日志
+                log.warn("查询表 {} 记录数失败，count 置为 null: {}", table, e.toString());
             }
+            // add 必须在 try 之外：否则查询失败的表会整层不进缓存，
+            // 调用方看到的是「这层不存在」，而不是「这层存在但数量未知」
+            layerCache.add(LayerMeta.builder()
+                    .tableName(table)
+                    .label(TABLE_LABELS.getOrDefault(table, table))
+                    .geometryType(LINE_TABLES.contains(table) ? "line" : "polygon")
+                    .count(count)
+                    .hasHeight(TABLES_WITH_HEIGHT.contains(table))
+                    .build());
         }
-        log.info("图层元数据缓存初始化完成，共 {} 个图层", layerCache.size());
+        // 全部表都查不到 = 数据库不可用，不是「部分降级」，必须 fail-fast。
+        // 否则应用会「启动成功、接口 200、data 为空数组」，监控与调用方都无法察觉。
+        if (failed == ALLOWED_TABLES.size()) {
+            throw new IllegalStateException(
+                    "全部 " + failed + " 个图层表的记录数查询均失败，数据库不可用，拒绝以空图层缓存启动");
+        }
+        if (failed > 0) {
+            log.warn("图层元数据缓存初始化完成，共 {} 个图层，其中 {} 个 count 为 null（部分表不可用）",
+                    layerCache.size(), failed);
+        } else {
+            log.info("图层元数据缓存初始化完成，共 {} 个图层", layerCache.size());
+        }
     }
 
     @Override
