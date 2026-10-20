@@ -54,3 +54,12 @@ docs/superpowers/
 docs/优化方案-*.md
 docs/bugfix-plan-*.md
 docs/学习日志-*.md
+
+# 2026-10-20 补：上面几条只挡 docs/ 子目录，挡不住"扔在仓库根目录"的同类文件。
+# 实测踩到：MyBatis-Plus 那份学习 docx、5 份 速查-*.md、一个 .verify-c/ 都出现在根目录
+# （当时是未跟踪状态、没推上去，但一次 git add -A 就会带进公开仓库）。
+# 下面三条把"任意位置的学习材料"一并挡住：
+*.docx
+学习日志-*.md
+速查-*.md
+资料/**
