@@ -6,7 +6,7 @@
 -- 1. 餐厅数据 (2条)
 -- 食堂1: other_buildings id=4, 食堂2: id=7
 -- ============================================================
-INSERT INTO restaurant (id, building_id, name, window_count, open_time, rating, phone) VALUES
+INSERT INTO restaurant(id, building_id, name, window_count, open_time, rating, phone) VALUES
 (1, 4, '食堂1', 10, '06:30-21:00', 4.6, '0311-88880001'),
 (2, 7, '食堂2', 10, '07:00-21:30', 4.3, '0311-88880002');
 

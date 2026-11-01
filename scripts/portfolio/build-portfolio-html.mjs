@@ -94,7 +94,7 @@ const html = `<!doctype html>
     <b>前端</b>：Vue 3.4 / Vite 5 / Cesium 1.145 / Pinia / Element-Plus<br>
     <b>后端</b>：Spring Boot 3.2 / Java 17 / MyBatis-Plus / HikariCP<br>
     <b>空间数据</b>：PostgreSQL + PostGIS + pgRouting（A* 路径规划）<br>
-    <b>坐标系</b>：入库统一标注 WGS84（SRID 4326），14 个空间列 SRID 一致<br>
+    <b>坐标系</b>：入库统一标注 WGS84（SRID 4326），12 个空间列 SRID 一致<br>
     <b>基准处理</b>：原始数据按高德 GCJ-02 基准采集（.prj 标注 WGS84 与实际不符），底图选同&nbsp;基准高德影像零平移对齐；实测与 WGS84 底图偏差约 109m
   </div>
   <div class="stack" style="margin-top:2mm">

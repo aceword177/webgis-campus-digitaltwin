@@ -26,7 +26,7 @@ const REPO = 'https://github.com/aceword177/webgis-campus-digitaltwin'
 // ============================================================
 
 // [来源] shp_data 库 geometry_columns 查询
-const SRID = { columns: 14, distinct: 1, srid: 4326 }
+const SRID = { columns: 12, distinct: 1, srid: 4326 }
 
 // [来源] 8 张校园表 COUNT(*)，合计 62
 const LAYERS = [

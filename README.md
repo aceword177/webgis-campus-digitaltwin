@@ -13,6 +13,15 @@
 | **作品集（功能截图与技术要点）** | 随简历投递的 `WebGIS开发作品集.pdf` |
 | **说明** | 项目需 PostgreSQL + PostGIS + pgRouting 与 Spring Boot 后端方可运行；本地启动见 [快速启动](#快速启动) |
 
+> **数据口径（别误会）**
+>
+> - **空间数据**：8 个图层 62 个要素，本人在 ArcMap 里照影像手工矢量化生产，是真实的空间数据；
+> - **业务数据**：订单 / 无人机等由项目内的「自动补单」模拟调度器生成（默认关闭，约 1100 单/天），
+>   **不是真实用户订单**；但落库、订单状态机、自动派单、A* 航线规划、位置推进都是真实在跑；
+> - **建筑配图**：`frontend/public/buildings/` 下的 28 张是底图卫星影像按建筑轮廓裁切的，不是实景照片，
+>   来源与生成方式见 [该目录的 SOURCES.md](frontend/public/buildings/SOURCES.md)；
+> - **演示/录屏**：用 `?present=1` 进场会自动关掉模拟调度、隐藏提示条与时钟。
+
 ## 技术栈
 
 | 层级 | 技术 | 版本 |
@@ -20,7 +29,7 @@
 | **前端** | Vue3 + Vite + Cesium + Element-Plus + Pinia | Vue 3.4 / Vite 5 / Cesium 1.145 |
 | **后端** | Spring Boot + MyBatis-Plus + HikariCP | Spring Boot 3.2 / Java 17 / MyBatis-Plus 3.5 |
 | **数据库** | PostgreSQL + PostGIS + **pgRouting** | PostgreSQL 18 / pgRouting（A* 路径规划） |
-| **坐标系统** | 入库统一标注 WGS84 (SRID 4326)，14 个空间列 SRID 一致 | — |
+| **坐标系统** | 入库统一标注 WGS84 (SRID 4326)，12 个空间列 SRID 一致 | — |
 | **坐标基准** | 数据实际为高德 GCJ-02 基准（`.prj` 标注 `GCS_WGS_1984` 与实体不符），底图取同基准高德影像零平移；实测与 WGS84 底图偏差约 109m | — |
 | **空间数据来源** | ArcMap 依影像底图手工矢量化 8 个图层 / 62 个要素，导出 Shapefile 后导入 PostGIS | — |
 
@@ -91,6 +100,34 @@ shallow 变体只跟踪顶层替换，**不影响**本项目的用法：切图�
 用列向量点积会把多边形剪切变形：实测 100m 的边会算成 72m / 138m，面积偏差 5.6%。
 必须用 `Matrix4.inverse` 把点变到局部 ENU 系（实测偏差 <0.01%）。
 详见 `utils/measure.js#computeEnuArea`。
+
+**6. 相机飞行要用 `fromDegrees`，别往 `Cartographic` 上直接加「度」。**
+
+`Cesium.Cartographic` 的 `longitude` / `latitude` 是**弧度**。无人机跟随相机里曾经这么写：
+
+```js
+// ❌ 米 → 度 的偏移直接加到「弧度」上，被放大 57.3 倍
+new Cesium.Cartographic(
+  cartographic.longitude + eastOffset / (111320 * Math.cos(cartographic.latitude)),
+  ...
+)
+```
+
+于是 35 m 的后方偏移变成了约 **2 km**：播放飞行动画时相机被甩到校园外，`pitch` 又只有 −15°，
+画面就是"校园在很远的地平线上"。正确写法是先转成度、再用 `Cartesian3.fromDegrees` 组装
+（`start()` 与 `fpv` 模式本来就是这么写的，只有 `follow` 漏了）：
+
+```js
+Cesium.Cartesian3.fromDegrees(
+  Cesium.Math.toDegrees(cartographic.longitude) + eastOffset / (111320 * Math.cos(cartographic.latitude)),
+  Cesium.Math.toDegrees(cartographic.latitude) + northOffset / 111320,
+  cartographic.height + cameraHeight
+)
+```
+
+> 顺带：动画 `stop()` 现在会把相机飞回**播放前**的视角。此前停止后相机留在无人机旁，
+> 且 `overview` 模式用的是 `camera.lookAt`（局部 ENU 坐标系），
+> 之后再 `flyTo` 世界坐标会被当成局部坐标解释 —— 所以恢复前必须先 `lookAtTransform(IDENTITY)`。
 
 ## 项目结构
 
@@ -270,6 +307,97 @@ npm run check
 
 前端启动后访问 http://localhost:5173
 
+### 方式三：Docker 一键启动（推荐给面试官 / 换机复现）
+
+不需要本机装 PostgreSQL、PostGIS、pgRouting、JDK、Node —— 三个容器起完整链路，且**首次启动自动建库灌数据**
+（`docs/sql/00_spatial_tables.sql` 里就是 8 张空间表 + 62 个要素的完整建表数据，不必再导 Shapefile）。
+
+```bash
+docker compose up -d --build
+
+# 前端（三维 / 二维 / 大屏三个入口）
+#   http://localhost:8081/
+#   http://localhost:8081/?view=analysis
+#   http://localhost:8081/?view=dashboard
+# 后端
+#   http://localhost:8080/swagger-ui.html
+```
+
+| 服务 | 镜像 | 端口 | 说明 |
+|------|------|------|------|
+| `db` | 自建（`docker/db/Dockerfile`，`postgis/postgis:17-3.5` + `postgresql-17-pgrouting`） | 5433→5432 | 官方 postgis 镜像不含 pgRouting，所以加了一层装扩展 |
+| `backend` | 自建（Maven 多阶段 → JRE 17） | 8080 | 等 db 健康检查通过后启动 |
+| `frontend` | 自建（Node 20 构建 → Nginx） | 8081→80 | Nginx 反代 `/api`、`/tiles` 到 backend |
+
+```bash
+docker compose logs -f backend   # 看后端日志
+docker compose down              # 停止（保留数据卷）
+docker compose down -v           # 停止并删数据卷 —— 下次启动才会重新执行初始化脚本
+```
+
+可覆盖参数（写进 `.env` 或在命令行给）：`DB_USER` / `DB_PASSWORD` / `WEB_PORT` / `BACKEND_PORT` / `DB_PORT_HOST`。
+默认口令 `postgres/postgres` 只用于本地演示，**上公网前务必改掉**。
+
+> 初始化脚本按文件名顺序执行：`00_spatial_tables` → `01_create_tables` → `02_seed_data` → `03_fix_no_fly_zone`
+> → `04_verify_data`（只读校验）→ `05_setup_pgrouting_navigation`（15m 导航网格）→ `06_add_building_profile`。
+> 这套顺序已在空库上逐脚本验证通过（`ON_ERROR_STOP=1`，退出码全 0），与开发库的要素数、网格规模完全一致。
+
+## 三个前台视图
+
+同一个前端入口，靠 `?view=` 切换，三者共用同一套 PostGIS 数据与后端接口：
+
+| 视图 | 入口 | 技术 | 用途 |
+|------|------|------|------|
+| 三维孪生 | `/` | Cesium 1.145 | 白模拉伸、点选弹窗、测距测面积、图层控制、配送闭环 |
+| 二维一张图 | `/?view=analysis` | OpenLayers 10 + MVT | 8 图层矢量瓦片、点位聚合、点选 / 缓冲区查询、A* 航线对照 |
+| 运营大屏 | `/?view=dashboard` | ECharts 6 | 6 个 KPI + 5 张图，全部取自业务表 |
+
+二维页支持深链演示（作品集截图拍的就是这几种状态）：
+
+```bash
+/?view=analysis&demo=route    # 固定起终点跑一次 A*，画出「直线 vs 规划」对照
+/?view=analysis&demo=buffer   # 180m 缓冲区查询，命中的宿舍楼高亮
+```
+
+### 演示/录屏模式 `?present=1`
+
+给"要上镜"的场景用（截图脚本跑的也是这个模式）：
+
+- 进场先把**自动补单开关关掉**（后端是内存态，上一轮打开的会残留）；
+- 不渲染顶部「自动补单已开启」横幅；
+- 隐藏右上角实时时钟（录屏里一直在跳，画面更像"某人的电脑"而不是产品）。
+
+只影响显示与这一个开关，**不改任何业务数据**。
+
+```bash
+http://localhost:5173/?present=1                           # 三维，干净画面
+http://localhost:5173/?present=1&view=analysis&demo=route  # 二维 A* 对照
+```
+
+> 为什么需要它：一次录屏里，之前手动打开的自动补单还留在后端内存里，
+> 于是画面顶部一直挂着红色横幅「自动补单已开启 · 每 30 秒自动生成订单」，
+> 一边往订单表写数据、一边让「累计订单」这个数字在镜头里持续上涨，看着像在刷假数据。
+> 顺带把横幅从 error 红改成琥珀色，并加了「8 秒后自动收成小胶囊」的行为，不再长期占屏。
+
+
+## 截图与作品集（可复现）
+
+全部截图与作品集 PDF 都由脚本生成，不手工截图：
+
+```bash
+# 前置：后端 :8080 + 前端 :5173 都在跑
+node scripts/dev/screenshot.mjs --list        # 看有哪些场景
+node scripts/dev/screenshot.mjs               # 拍全部 → .temp-portfolio/shots/
+SHOT_FORMAT=jpeg node scripts/dev/screenshot.mjs   # 出 JPEG（作品集用，体积小）
+
+node scripts/portfolio/build-portfolio.mjs    # → .temp-portfolio/portfolio.html + WebGIS开发作品集.pdf
+node scripts/showcase/build-showcase.mjs      # → docs/showcase/index.html（在线技术展示页）
+```
+
+截图用 Edge headless + CDP（Node 18+ 自带 WebSocket，不需要 Playwright/Puppeteer）；
+作品集用 Chromium 的 `--print-to-pdf` 打印，页数固定 10 页、每页「一句结论 + 一个证据」。
+
+
 ## 核心功能
 
 ### 三维可视化
@@ -356,7 +484,7 @@ npm run check
 - [ ] 导航网格升级：更高分辨率（5m）、动态限飞区热更新
 - [ ] 真实无人机机队接入（遥测上报 + 任务下发协议）
 - [ ] 时间轴昼夜模拟
-- [ ] Nginx 部署 + 前端打包 dist 托管
+- [x] Nginx 部署 + 前端打包 dist 托管（已做成 docker-compose 一键启动）
 - [ ] 订单超时自动取消、多无人机任务调度优化
 
 ## 许可证

@@ -78,7 +78,7 @@
 <div class="kpis">
   <div class="kpi"><div class="v">62</div><div class="l">自主矢量化要素</div></div>
   <div class="kpi"><div class="v">8</div><div class="l">校园空间图层</div></div>
-  <div class="kpi"><div class="v">14</div><div class="l">空间列 SRID 一致</div></div>
+  <div class="kpi"><div class="v">12</div><div class="l">空间列 SRID 一致</div></div>
   <div class="kpi"><div class="v">51</div><div class="l">后端单元测试</div></div>
   <div class="kpi"><div class="v">10,693</div><div class="l">导航网格边</div></div>
   <div class="kpi"><div class="v">5.6% → <0.01%</div><div class="l">面积量算偏差</div></div>
@@ -128,7 +128,7 @@
 
 <p>
   入库时统一标注 SRID <code>4326</code>（WGS84）。经实测核查，
-  <strong>14 个空间列的 SRID 完全一致、无混用</strong>：
+  <strong>12 个空间列的 SRID 完全一致、无混用</strong>：
 </p>
 
 <pre><code><span class="cmt">-- 验证 1：声明 SRID 是否统一（geometry_columns 是 PostGIS 元数据视图）</span>
@@ -138,7 +138,7 @@ SELECT COUNT(*) AS spatial_columns,
 FROM geometry_columns;
 <span class="ok"> spatial_columns | distinct_srid | srids
 -----------------+---------------+-------
-              14 |             1 | 4326</span>
+              12 |             1 | 4326</span>
 
 <span class="cmt">-- 验证 2：数据是否为真经纬度 + 校园真实尺度</span>
 SELECT round(ST_Distance(
@@ -408,7 +408,7 @@ flight_route / drone_nav_node / drone_nav_edge
   <thead><tr><th>数字</th><th>验证方法</th></tr></thead>
   <tbody>
     <tr><td>62 个要素 / 8 张表</td><td>对每张表执行 <code>SELECT COUNT(*)</code></td></tr>
-    <tr><td>14 个空间列 SRID 一致</td><td>查询 <code>geometry_columns</code></td></tr>
+    <tr><td>12 个空间列 SRID 一致</td><td>查询 <code>geometry_columns</code></td></tr>
     <tr><td>校园跨度 834.7 米</td><td>用 <code>::geography</code> 计算边界跨度</td></tr>
     <tr><td>51 个单元测试</td><td><code>mvn test</code>，或统计 <code>backend/src/test/</code> 中 <code>@Test</code> 次数</td></tr>
     <tr><td>6 个校验脚本</td><td>列出 <code>frontend/scripts/verify-*.mjs</code></td></tr>
