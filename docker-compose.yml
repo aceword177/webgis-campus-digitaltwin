@@ -1,0 +1,82 @@
+# 校园无人机外卖配送系统 · WebGIS 数字孪生
+# 一键启动：docker compose up -d --build
+#
+# 首次启动会自动建库并把 docs/sql 下的脚本按文件名顺序灌进去，
+# 包含 8 张校园空间表 + 62 个要素（由 ArcMap 手工矢量化），不需要再导 Shapefile。
+# 想重跑初始化：docker compose down -v（-v 会删数据卷，初始化脚本才会重新执行）
+#
+# 端口：前端 http://localhost:8081 ｜ 后端 http://localhost:8080 ｜ 数据库 5433（避开本机 5432）
+# 全部端口与口令都可 .env 覆盖，见 README「Docker 一键启动」。
+name: campus-digital-twin
+
+services:
+  db:
+    build:
+      context: ./docker/db
+    image: campus-twin-db:pg17-postgis3.5-pgrouting
+    container_name: campus-twin-db
+    environment:
+      POSTGRES_DB: shp_data
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      TZ: Asia/Shanghai
+    ports:
+      - "${DB_PORT_HOST:-5433}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # 挂载初始化脚本目录：仅在数据卷为空时执行
+      - ./docs/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d shp_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    image: campus-twin-backend:1.0.0
+    container_name: campus-twin-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: shp_data
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # 破坏性清理与自动补单默认关闭（见 application.yml 的说明）
+      CAMPUS_CLEANUP_ENABLED: "false"
+      CAMPUS_AUTO_ORDER_ENABLED: "false"
+      TZ: Asia/Shanghai
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      # JRE 镜像里没有 curl，用 bash 的 /dev/tcp 探一下端口
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    image: campus-twin-frontend:1.0.0
+    container_name: campus-twin-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8081}:80"
+    restart: unless-stopped
+
+volumes:
+  db-data:
+    name: campus-twin-db-data

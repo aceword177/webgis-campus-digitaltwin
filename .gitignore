@@ -41,8 +41,10 @@ frontend/public/cesium/
 ui-screenshot*.png
 # .temp-portfolio 是作品集 HTML 的构建目录（含缩放后截图，约 1.8MB）
 # .temp-resume  是简历改写脚本的工作目录
+# .temp-notes   是「WebGIS 学习笔记」docx 的写入工具目录（内容源 / 校验串 / 进度台账 / 备份副本）
 .temp-portfolio/
 .temp-resume/
+.temp-notes/
 
 # 浏览器临时 profile（前端截图脚本用，约 6.7MB，勿入库）
 .temp-edge-profile/
@@ -63,3 +65,4 @@ docs/学习日志-*.md
 学习日志-*.md
 速查-*.md
 资料/**
+.temp-run/
