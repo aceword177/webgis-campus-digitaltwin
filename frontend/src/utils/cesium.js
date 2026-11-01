@@ -866,6 +866,36 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
   let currentHeading = 0
   let cameraReady = false // 相机是否已飞入到起点
 
+  /**
+   * 播放前记下相机视角，停止/结束后飞回去。
+   * 否则动画结束时相机会停在无人机旁 35m、离地几十米的位置，
+   * 用户会误以为"视角自己跑飞了"（实际是停在了跟随机位）。
+   */
+  let savedView = null
+
+  function saveCameraView() {
+    const cam = viewer.camera
+    savedView = {
+      destination: Cesium.Cartesian3.clone(cam.positionWC),
+      heading: cam.heading,
+      pitch: cam.pitch,
+      roll: cam.roll
+    }
+  }
+
+  function restoreCameraView() {
+    if (!savedView) return
+    const view = savedView
+    savedView = null
+    // 必须先退出 lookAt 的局部坐标系（overview 模式会设置 transform），再飞世界坐标
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
+    viewer.camera.flyTo({
+      destination: view.destination,
+      orientation: { heading: view.heading, pitch: view.pitch, roll: view.roll },
+      duration: 1.2
+    })
+  }
+
   // 计算两点之间的 heading（方位角）
   function computeHeading(from, to) {
     const fromCartographic = Cesium.Cartographic.fromCartesian(from)
@@ -878,6 +908,19 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
     const y = Math.sin(dLng) * Math.cos(lat2)
     const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
     return Math.atan2(y, x)
+  }
+
+  /**
+   * 第三人称跟随机位（'follow' 模式与 start() 的入场机位共用同一组数值）。
+   *
+   * 参数来历：早期是后 35m / 上 18m / 俯角 −15°。贴得太近，飞到教学区时相机经常穿进楼体，
+   * 半个画面是建筑内壁。改成后 50m / 上 28m / 俯角 −22° 后，无人机仍在画面中央，
+   * 但能同时看到航线走向和周边楼栋。
+   */
+  const FOLLOW_CAMERA = {
+    distance: 50,   // 无人机后方距离（米）
+    height: 28,     // 无人机上方高度（米）
+    pitch: Cesium.Math.toRadians(-22) // 俯角
   }
 
   // 根据无人机位置和 heading 更新相机
@@ -896,22 +939,26 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
     const cartographic = Cesium.Cartographic.fromCartesian(dronePos)
 
     if (viewMode === 'follow') {
-      // 第三人称跟随：相机在无人机后上方 30m，朝向飞行方向
-      const cameraDistance = 35 // 后方距离
-      const cameraHeight = 18   // 上方高度
-      const pitch = Cesium.Math.toRadians(-15) // 略微向下看
+      // 第三人称跟随：相机在无人机后上方，朝向飞行方向（数值见 FOLLOW_CAMERA）
+      const cameraDistance = FOLLOW_CAMERA.distance
+      const cameraHeight = FOLLOW_CAMERA.height
+      const pitch = FOLLOW_CAMERA.pitch
 
       // 计算相机位置：无人机位置 + 后方偏移 + 上方偏移
       const headingOpposite = currentHeading + Math.PI
       const eastOffset = Math.sin(headingOpposite) * cameraDistance
       const northOffset = Math.cos(headingOpposite) * cameraDistance
 
-      const cameraCartographic = new Cesium.Cartographic(
-        cartographic.longitude + eastOffset / (111320 * Math.cos(cartographic.latitude)),
-        cartographic.latitude + northOffset / 111320,
+      // ⚠️ 单位坑（别改回去）：Cartographic 的 longitude / latitude 是**弧度**，
+      //    而下面算出来的 eastOffset / northOffset 是米，除完 111320 得到的是「度」。
+      //    直接把「度」加到「弧度」上会被放大 57.3 倍：35 m 的后方偏移变成约 2 km，
+      //    相机被甩到校园外、pitch -15° 又对着地平线，看起来就是"视角偏移特别远"。
+      //    所以统一用 fromDegrees() 组装（与 fpv 模式、start() 的写法保持一致）。
+      const cameraPosition = Cesium.Cartesian3.fromDegrees(
+        Cesium.Math.toDegrees(cartographic.longitude) + eastOffset / (111320 * Math.cos(cartographic.latitude)),
+        Cesium.Math.toDegrees(cartographic.latitude) + northOffset / 111320,
         cartographic.height + cameraHeight
       )
-      const cameraPosition = Cesium.Cartographic.toCartesian(cameraCartographic)
 
       viewer.camera.setView({
         destination: cameraPosition,
@@ -960,7 +1007,9 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
     entity,
     totalSeconds,
     start() {
-      // 先飞入到起点上方，再开始动画
+      // 先记下当前视角，停止时飞回来
+      saveCameraView()
+      // 再飞入到起点上方，开始动画
       const startPos = positions[0]
       const startCartographic = Cesium.Cartographic.fromCartesian(startPos)
       // 计算初始 heading（用前两个点）
@@ -968,9 +1017,9 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
         currentHeading = computeHeading(positions[0], positions[1])
       }
 
-      // 相机先 flyTo 到起点后上方
-      const cameraDistance = 35
-      const cameraHeight = 18
+      // 相机先 flyTo 到起点后上方（与 follow 模式同一组机位参数，避免起飞后立刻跳一下）
+      const cameraDistance = FOLLOW_CAMERA.distance
+      const cameraHeight = FOLLOW_CAMERA.height
       const headingOpposite = currentHeading + Math.PI
       const eastOffset = Math.sin(headingOpposite) * cameraDistance
       const northOffset = Math.cos(headingOpposite) * cameraDistance
@@ -983,7 +1032,7 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
         ),
         orientation: {
           heading: currentHeading,
-          pitch: Cesium.Math.toRadians(-15),
+          pitch: FOLLOW_CAMERA.pitch,
           roll: 0
         },
         duration: 1.8,
@@ -1018,6 +1067,8 @@ export function createDroneAnimation(viewer, routeGeojson, droneId, altitude = 5
       if (this._removeListener) this._removeListener()
       viewer.entities.remove(entity)
       viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY)
+      // 回到播放前的视角（在 lookAtTransform 复位之后，否则飞的是局部坐标）
+      restoreCameraView()
       lastPosition = null
       cameraReady = false
       // 复位时钟到真实时间（动画开始会重新设置时钟区间，stop 时恢复默认状态）

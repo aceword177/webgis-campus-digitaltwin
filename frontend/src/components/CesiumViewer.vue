@@ -146,6 +146,11 @@ let planHintLabel = null
 onMounted(async () => {
   const viewer = mapStore.initViewer(cesiumContainer.value)
 
+  // 仅开发模式暴露一个调试句柄：排查"相机跑飞"这类问题时，能在控制台直接读
+  // viewer.camera.positionCartographic / entities 而不必改代码。
+  // 生产构建里 import.meta.env.DEV 为 false，不会挂到 window 上。
+  if (import.meta.env.DEV) window.__CESIUM_VIEWER__ = viewer
+
   // 获取校园边界，设置中心点
   try {
     const bounds = await getCampusBounds()
@@ -957,7 +962,9 @@ function registerCustomEventListeners(viewer) {
           mapStore.stopAnimation()
           droneAnimation.stop()
           droneAnimation = null
-          // 已飞抵终点：更新数据库位置（相机保持跟随，方便确认送达）
+          // 已飞抵终点：更新数据库位置。
+          // 注意 stop() 现在会把相机飞回"播放前"的视角（否则相机会停在无人机旁 35m 处，
+          // 看起来像视角自己跑飞了）；想停在终点看送达过程，再点一次订单的「查看航线」。
           const end = remaining[remaining.length - 1]
           const finishedId = currentAnimatedDroneId
           currentAnimatedDroneId = null
