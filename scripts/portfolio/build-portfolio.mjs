@@ -606,7 +606,7 @@ const p9 = `
     <tr><td class="k">局部坐标</td><td>拿 <code>eastNorthUpToFixedFrame</code> 返回矩阵的<b>列向量</b>做点积取局部坐标（列主序混淆，拼出来的是混合量）</td><td>100 m 的边量成 72 m / 138 m，一条短一条长，面积偏差 <b>5.6%</b></td><td>改用 <code>Matrix4.inverse</code> 把点变到局部 ENU 系，偏差 <b>&lt; 0.01%</b></td></tr>
   </table>
   <p style="font-size:8.6pt;color:#5b6b7d">两个坑的共同点不是「不会写」，而是<b>接受了没有验证过的中间量</b>。所以现在每个关键数字后面都跟着一条可重跑的验证方法（见第 06、08 页）。</p>
-  <div class="foot"><span>09 / 10</span><span>相关记录：docs/bug-records/ · README「关键实现约束」</span></div>
+  <div class="foot"><span>09 / 10</span><span>相关记录：docs/bug-records/（BUG-01~03 缺陷档案）· README「关键实现约束」</span></div>
 </section>`
 
 const p10 = `

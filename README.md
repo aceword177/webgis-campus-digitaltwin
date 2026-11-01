@@ -129,6 +129,20 @@ Cesium.Cartesian3.fromDegrees(
 > 且 `overview` 模式用的是 `camera.lookAt`（局部 ENU 坐标系），
 > 之后再 `flyTo` 世界坐标会被当成局部坐标解释 —— 所以恢复前必须先 `lookAtTransform(IDENTITY)`。
 
+## 缺陷档案（bug-records）
+
+踩过的坑按编号归档在 [`docs/bug-records/`](docs/bug-records/README.md)，每篇写清「现象 → 复现 → 根因 → 修复 → 验证 → 经验」：
+
+| 编号 | 标题 | 严重程度 |
+|---|---|---|
+| [BUG-01](docs/bug-records/BUG-01-clampToGround.md) | 拉伸建筑误用 `clampToGround` 导致渲染管线语义冲突 | 高（渲染中断） |
+| [BUG-02](docs/bug-records/BUG-02-vue-proxy-worker.md) | Cesium 对象进入 Vue 深度响应式导致 Worker 结构化克隆失败 | 高（渲染中断） |
+| [BUG-03](docs/bug-records/BUG-03-camera-radians.md) | 跟随相机把「度」当作「弧度」相加，导致视角偏移约 2 km | 中高（演示视角失效，必现） |
+
+上文「关键实现约束」是**结论清单**（写代码前必读），缺陷档案是这些结论的**推导过程**：
+第 1 条 ← BUG-02，第 2 条 ← BUG-01，第 6 条 ← BUG-03。
+每条修复都配了可重复运行的验证脚本（`frontend/scripts/verify-*.mjs`）。
+
 ## 项目结构
 
 ```
