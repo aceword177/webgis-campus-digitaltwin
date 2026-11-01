@@ -77,6 +77,7 @@ const N = {
 
 const REPO = 'https://github.com/aceword177/webgis-campus-digitaltwin'
 const SHOWCASE = 'https://aceword177.github.io/webgis-campus-digitaltwin/showcase/'
+const VIDEO = 'https://www.bilibili.com/video/BV1ZLx46TEYu/'
 
 const img = (name) => {
   const file = path.join(shots, name)
@@ -243,6 +244,7 @@ const cover = `
   <div class="links">
     源码仓库：<span>${REPO}</span><br>
     在线技术展示：<span>${SHOWCASE}</span><br>
+    演示视频（B 站）：<span>${VIDEO}</span><br>
     技术栈：Vue3 + Vite + Cesium 1.145 + OpenLayers 10 + ECharts 6 ｜ Spring Boot 3.2 + MyBatis-Plus ｜ PostgreSQL 18 + PostGIS 3.6 + pgRouting 4.0
   </div>
 
@@ -665,7 +667,8 @@ const p10 = `
   消防疏散与日照阴影模拟 · 城市级瓦片与导航网格的性能压测。</p>
 
   <div class="links" style="margin-top:3mm">
-    源码：<span>${REPO}</span>　｜　技术展示：<span>${SHOWCASE}</span>
+    源码：<span>${REPO}</span>　｜　技术展示：<span>${SHOWCASE}</span><br>
+    演示视频：<span>${VIDEO}</span>
   </div>
 
   <div class="foot"><span>10 / 10</span><span>闫孜昊 · 17303105475 · ace9991@foxmail.com</span></div>
