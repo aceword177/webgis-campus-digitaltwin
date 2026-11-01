@@ -24,7 +24,9 @@
     "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.6.8",
     "cesium": "1.145.0",
+    "echarts": "^6.1.0",
     "element-plus": "^2.7.0",
+    "ol": "^10.11.0",
     "pinia": "^2.1.7",
     "vue": "^3.4.21"
   },

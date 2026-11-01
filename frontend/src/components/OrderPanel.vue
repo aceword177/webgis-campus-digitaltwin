@@ -7,16 +7,25 @@
       </el-button>
     </div>
 
-    <!-- 自动补单开关（后端默认关闭；只有想要"系统很活跃"的画面时才打开） -->
+    <!--
+      自动补单开关（后端默认关闭）。会真的往订单表写数据（约 1100 单/天），
+      所以只在需要「系统很活跃」的画面时打开；录屏/演示请用 ?present=1，
+      那个模式进场就会把它关掉。
+    -->
     <div class="auto-order-bar">
       <span class="auto-order-label">自动补单</span>
       <el-switch
         :model-value="autoOrder.enabled"
         :loading="autoOrder.loading"
+        :disabled="isPresent"
         size="small"
         @change="onAutoOrderChange"
       />
-      <span class="auto-order-state">{{ autoOrder.enabled ? '已开启（每 30 秒一单）' : '默认关闭' }}</span>
+      <span class="auto-order-state">{{ autoOrder.enabled ? '已开启（每 30 秒一单，写入订单表）' : '默认关闭' }}</span>
+    </div>
+    <div class="auto-order-hint">
+      <template v-if="isPresent">演示模式（<code>?present=1</code>）已锁定补单开关，录制时不会改写业务数据</template>
+      <template v-else>录屏/演示用 <code>?present=1</code>：自动关闭补单、隐藏提示条与时钟</template>
     </div>
 
     <!-- 自动派送新订单提示条 -->
@@ -106,6 +115,13 @@ import { ORDER_STATUS_LABELS } from '@/utils/cesium'
 const mapStore = useMapStore()
 const selectedOrder = computed(() => mapStore.selectedOrder)
 const autoOrder = useAutoOrderStore()
+
+/**
+ * 演示/录屏模式（?present=1）：把补单开关锁死。
+ * App.vue 进场时已经会把它关掉，这里再禁用控件是为了防"过程中手滑打开"——
+ * 那个模式下顶部横幅是隐藏的，打开后不会有任何提示，但订单会真的往表里写。
+ */
+const isPresent = new URLSearchParams(location.search).get('present') === '1'
 
 const loading = ref(false)
 const creating = ref(false)
@@ -199,7 +215,7 @@ function selectOrder(order) {
 async function onAutoOrderChange(next) {
   const ok = await autoOrder.setEnabled(!!next)
   if (ok) {
-    ElMessage.success(next ? '自动补单已开启：每 30 秒自动生成一单' : '自动补单已关闭')
+    ElMessage.success(next ? '自动补单已开启：每 30 秒生成一单并写入订单表' : '自动补单已关闭')
   }
 }
 
@@ -283,6 +299,23 @@ async function submitCreate() {
 
 .auto-order-label { color: rgba(255, 255, 255, 0.85); }
 .auto-order-state { color: rgba(255, 255, 255, 0.45); }
+
+/* 开关旁边那行提示：只在面板里出现，不占地图画面 */
+.auto-order-hint {
+  padding: 0 14px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.auto-order-hint code {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(64, 158, 255, 0.18);
+  color: #8ec5ff;
+  font-family: Consolas, monospace;
+}
 
 .filter-bar {
   padding: 8px 12px;

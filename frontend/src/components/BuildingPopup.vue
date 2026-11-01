@@ -10,21 +10,23 @@
     <div class="popup-body">
       <!-- 建筑信息 -->
       <template v-if="!building.isDrone">
-        <!-- 建筑照片：按约定路径加载，缺图时回退到样式化占位图 -->
+        <!-- 建筑影像：按约定路径加载，缺图时回退到样式化占位图 -->
         <div v-if="photoPath" class="photo-box">
           <img
             v-if="!photoFailed"
             class="building-photo"
             :class="{ loaded: photoLoaded }"
             :src="photoPath"
-            :alt="building.name || '建筑照片'"
+            :alt="building.name || '建筑影像'"
             @load="photoLoaded = true"
             @error="photoFailed = true"
           />
           <div v-else class="photo-placeholder">
             <el-icon class="placeholder-icon"><Picture /></el-icon>
-            <span class="placeholder-text">{{ building.name || '暂无照片' }}</span>
+            <span class="placeholder-text">{{ building.name || '暂无影像' }}</span>
           </div>
+          <!-- 来源标注：仓库里这批图是底图卫星影像按建筑轮廓裁切的，不是实景照片，别让人误会 -->
+          <span v-if="!photoFailed && photoLoaded" class="photo-badge">卫星影像</span>
           <div v-if="!photoLoaded && !photoFailed" class="photo-loading"></div>
         </div>
 
@@ -413,6 +415,22 @@ function formatAreaSqm(areaSqm) {
   display: block;
   opacity: 0;
   transition: opacity 0.25s ease;
+}
+
+/* 图片来源角标：说明这是底图裁切的卫星影像，不是实景照片 */
+.photo-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(6, 14, 26, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
 }
 
 .building-photo.loaded {
