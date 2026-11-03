@@ -66,3 +66,13 @@ docs/学习日志-*.md
 速查-*.md
 资料/**
 .temp-run/
+
+# 2026-11-01 补：`docs/bug-records/` 里**大文件**（学校版 缺陷修复档案.pdf/.docx，
+# 含论文写作建议）属过程性材料，只留本地与私有笔记仓库。
+#
+# ⚠️ 刻意**不**写成 `docs/bug-records/`：该目录里的技术版 `BUG-0N.md` 是**主动入库**的
+# （项目提交 12515dd「缺陷档案改为 Markdown 入库」，根 README「缺陷档案」一节有索引链接），
+# 整目录忽略会让下一份 `BUG-04.md` 加不进去（要 git add -f），还会让 README 的链接看起来"文件丢了"。
+# 只挡 pdf/docx 即可覆盖实际风险（2026-11-01 实测：4.6MB 的 PDF 曾以未跟踪状态躺在工作区）。
+docs/bug-records/*.pdf
+docs/bug-records/*.docx

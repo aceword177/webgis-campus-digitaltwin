@@ -227,7 +227,9 @@ export function createMeasureController(viewer, mode) {
       if (cartesian) addPoint(cartesian)
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
     handler.setInputAction((movement) => {
-      const cartesian = viewer.camera.pickEllipsoid(movement.position, viewer.scene.globe.ellipsoid)
+      // MOUSE_MOVE 的载荷只有 { startPosition, endPosition }，没有 position
+      // （用 movement.position 会得到 undefined → pickEllipsoid 内 GGt 读 undefined.x → 每次移动鼠标抛 TypeError）
+      const cartesian = viewer.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid)
       renderPreview(cartesian)
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
     handler.setInputAction(() => undo(), Cesium.ScreenSpaceEventType.RIGHT_CLICK)
