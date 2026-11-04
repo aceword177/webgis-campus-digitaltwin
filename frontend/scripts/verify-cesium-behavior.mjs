@@ -200,7 +200,7 @@ console.log('\n【6】形心兜底：loadBuildings 是否真的把形心存进 e
 
   // 6.2 回归：形心必须真的写入，且值等于原始几何算出的形心
   const rows = [{ id: 1, name: '6号教学楼', height: 6, geom: poly(114.4673, 37.9841) }]
-  const ds = await loadBuildings(fakeViewer(), rows, 'teaching', 'teaching')
+  const { dataSource: ds } = await loadBuildings(fakeViewer(), rows, 'teaching', 'teaching')
   const entity = ds.entities.values[0]
   const expected = getFeatureCentroid(rows[0].geom)
   console.log(`      _centroidLng/Lat = ${centroidOf(entity).join(' / ')}（期望 ${expected.join(' / ')}）`)
@@ -218,7 +218,7 @@ console.log('\n【6】形心兜底：loadBuildings 是否真的把形心存进 e
     { id: 22, name: 'B', height: 4, geom: poly(114.30, 37.30) },
     { id: 33, name: 'C', height: 5, geom: poly(114.50, 37.50) }
   ]
-  const dsMulti = await loadBuildings(fakeViewer(), multi, 'teaching', 'teaching')
+  const { dataSource: dsMulti } = await loadBuildings(fakeViewer(), multi, 'teaching', 'teaching')
   let crossed = 0
   for (const row of multi) {
     const e = dsMulti.entities.values.find((x) => String(x.properties?.id?.getValue()) === String(row.id))
@@ -236,7 +236,7 @@ console.log('\n【6】形心兜底：loadBuildings 是否真的把形心存进 e
     { name: 'A', height: 3, geom: poly(114.10, 37.10) },
     { name: 'B', height: 4, geom: poly(114.50, 37.50) }
   ]
-  const dsNoId = await loadBuildings(fakeViewer(), noId, 'teaching', 'teaching')
+  const { dataSource: dsNoId } = await loadBuildings(fakeViewer(), noId, 'teaching', 'teaching')
   console.log(`      缺 id 各实体形心: ${dsNoId.entities.values.map((e) => `${e.properties?.name?.getValue()}=${e._centroidLng}`).join('  ')}`)
   if (dsNoId.entities.values.some((e) => e._centroidLng !== undefined)) {
     fail('缺 id 时仍写入形心 —— 会串号（拿到别人的坐标，比拿不到更糟）')
@@ -246,7 +246,7 @@ console.log('\n【6】形心兜底：loadBuildings 是否真的把形心存进 e
 
   // 6.5 边界：空输入不应抛异常
   try {
-    const dsEmpty = await loadBuildings(fakeViewer(), [], 'teaching', 'empty')
+    const { dataSource: dsEmpty } = await loadBuildings(fakeViewer(), [], 'teaching', 'empty')
     if (dsEmpty.entities.values.length === 0) pass('空 features 正常返回空图层')
     else fail('空 features 却生成了实体')
   } catch (e) {

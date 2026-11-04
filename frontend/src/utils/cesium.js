@@ -180,10 +180,15 @@ export async function loadBuildings(viewer, features, buildingType, name) {
   viewer.dataSources.add(dataSource)
 
   // 建筑轮廓描边：拉伸体块用独立 polyline 勾边（outline 属性对非贴地多边形无效）。
-  // add() 是异步的，必须 await 完再返回，调用方才能按名字把它从集合里取回
-  await addBuildingOutlines(viewer, features, buildingType)
+  //
+  // ⚠️ 必须 await：DataSourceCollection.add() 是异步的。
+  // ⚠️ 但**不要**让调用方再按名字把它 getByName 取回来 —— 曾经就是这么做的：
+  //    这里建的名字是 'building-outlines-<type>'，调用方却按 'outline-<type>' 去查，
+  //    精确匹配查不到 → 空数组 → 登记块永不执行 → 关掉教学楼后描边残留。
+  //    现在**直接把对象返回**，字符串契约彻底去掉。
+  const outlineDataSource = await addBuildingOutlines(viewer, features, buildingType)
 
-  return dataSource
+  return { dataSource, outlineDataSource }
 }
 
 /**
@@ -194,12 +199,14 @@ export async function loadBuildings(viewer, features, buildingType, name) {
  *
  * ⚠️ 返回 Promise：`DataSourceCollection.add()` 是**异步**的，
  * 调用后对象不会立刻进入集合，此时 `getByName()` 查不到。
- * 调用方需要 await 之后才能按名字取回并登记（见 CesiumViewer#loadBuildingLayer）。
+ * 所以**不要**用 getByName 取回（历史上正是这么做的：这里建 'building-outlines-<type>'，
+ * 调用方按 'outline-<type>' 去查，精确匹配永远为空 → 描边显隐全失效）。
+ * 本函数直接返回对象，由 `loadBuildings` 一并交给调用方。
  *
  * @returns {Promise<Cesium.CustomDataSource>}
  */
 async function addBuildingOutlines(viewer, features, buildingType) {
-  const dataSource = new Cesium.CustomDataSource('building-outlines-' + buildingType)
+  const dataSource = new Cesium.CustomDataSource('outline-' + buildingType)
 
   for (const feature of features || []) {
     let geom = feature?.geom
@@ -240,12 +247,12 @@ async function addBuildingOutlines(viewer, features, buildingType) {
 /**
  * 描边图层 key -> 所属建筑图层 key 的映射。
  * stores/map.js#setLayerVisible 用它把建筑图层的显隐同步给描边。
+ *
+ * ⚠️ 2026-11-04：**已删除**（原定义在这里）。
+ * 它对应的 `'outline-<type>'` 键名从未被任何地方 import，属于死代码；
+ * 而真正生效的映射是 `stores/map.js` 里那份 `OUTLINE_KEY_OF`。
+ * 同一套命名留两份映射，正是描边显隐失效那类 bug 的温床。
  */
-export const OUTLINE_LAYER_OF = {
-  'outline-teaching': 'teaching',
-  'outline-dormitory': 'dormitory',
-  'outline-other': 'other'
-}
 
 /**
  * 加载场地（操场/篮球场/网球场）GeoJSON

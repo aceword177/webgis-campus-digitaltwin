@@ -228,19 +228,22 @@ onBeforeUnmount(() => {
  *
  * 描边是独立的 CustomDataSource（key = outline-<type>），必须登记，
  * 否则图层面板关掉"教学楼"时描边会残留 —— setLayerVisible 正是按 key 找 dataSource 的。
+ *
+ * ⚠️ 登记用的是 `loadBuildings` **返回的对象**，不再用 `getByName('outline-<type>')`：
+ * 那套写法曾经因名字不一致（'building-outlines-<type>' vs 'outline-<type>'）而永久失效，
+ * 且 getByName 是精确匹配、错了也不报错。字符串契约不如直接传对象。
  */
 async function loadBuildingLayer(viewer, table, buildingType, name) {
   const features = await fetchGeojsonShifted(table)
   if (!features?.length) return
-  mapStore.dataSources[buildingType] = await loadBuildings(viewer, features, buildingType, name)
-  const outlineName = 'outline-' + buildingType
-  const outlines = viewer.dataSources.getByName(outlineName)
-  if (outlines?.length) {
-    mapStore.dataSources[outlineName] = outlines[0]
-    // 新建 dataSource 默认 show=true，需按当前图层开关回写，
-    // 否则用户在数据加载完成前就关掉的图层会被"擅自点亮"
-    outlines[0].show = mapStore.layers[buildingType]
-  }
+  const { dataSource, outlineDataSource } = await loadBuildings(viewer, features, buildingType, name)
+  mapStore.dataSources[buildingType] = dataSource
+  mapStore.dataSources[`outline-${buildingType}`] = outlineDataSource
+
+  // 新建 dataSource 默认 show=true，需按当前图层开关回写，
+  // 否则用户在数据加载完成前就关掉的图层会被"擅自点亮"（建筑与描边都要回写）
+  dataSource.show = mapStore.layers[buildingType]
+  outlineDataSource.show = mapStore.layers[buildingType]
 }
 
 /** 加载所有空间数据（按当前底图坐标系平移后再渲染） */
