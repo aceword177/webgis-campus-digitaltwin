@@ -296,13 +296,14 @@ console.log('\n【回归】测面积的 ENU 投影与鞋带公式')
     else { failures++; console.log('  ✗ 测面积偏差超过 0.1%') }
   }
 
-  // 再验证：错误写法（列向量点积）会明显偏离，说明这个回归有区分度
+  // 再验证：错误写法（点积「行」= 用 A 而不是 A⁻¹）会明显偏离，说明这个回归有区分度
+  // ⚠️ 注意别再把它叫"列向量点积"：m[0],m[4],m[8] 在列主序下是**第 0 行**。
   const m = Cesium.Transforms.eastNorthUpToFixedFrame(points[0])
-  const badEast = new Cesium.Cartesian3(m[0], m[4], m[8])
-  const badNorth = new Cesium.Cartesian3(m[1], m[5], m[9])
+  const badRowEast = new Cesium.Cartesian3(m[0], m[4], m[8])
+  const badRowNorth = new Cesium.Cartesian3(m[1], m[5], m[9])
   const badPlanar = points.map(p => {
     const v = Cesium.Cartesian3.subtract(p, points[0], new Cesium.Cartesian3())
-    return { e: Cesium.Cartesian3.dot(v, badEast), n: Cesium.Cartesian3.dot(v, badNorth) }
+    return { e: Cesium.Cartesian3.dot(v, badRowEast), n: Cesium.Cartesian3.dot(v, badRowNorth) }
   })
   let badArea = 0
   for (let i = 0; i < badPlanar.length; i++) {
@@ -311,7 +312,7 @@ console.log('\n【回归】测面积的 ENU 投影与鞋带公式')
   }
   badArea = Math.abs(badArea) / 2
   const badErr = Math.abs(badArea - trueArea) / trueArea * 100
-  console.log(`      对照/错误写法（列向量点积）= ${badArea.toFixed(2)} m²（偏差 ${badErr.toFixed(2)}%）`)
+  console.log(`      对照/错误写法（点积行 = 用 A 而不是 A⁻¹）= ${badArea.toFixed(2)} m²（偏差 ${badErr.toFixed(2)}%）`)
   if (badErr > 1) console.log('  ✓ 错误写法确实会明显偏离 —— 本回归有区分度')
   else { failures++; console.log('  ✗ 错误写法没有明显偏离，回归失去意义') }
 }
